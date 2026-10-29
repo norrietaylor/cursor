@@ -5,10 +5,10 @@ box, where `min-cursor` is not installed.
 
 | Command | Does |
 |---|---|
-| `min-cursor open [PATH] [-n NAME] [--no-window]` | the session for `PATH` (default `.`): a live one is reused, else one is activated with `--loadout cursor`; then Cursor opens `/workbench` in it. Prints `min-cursor.NAME` |
+| `min-cursor open [PATH] [-n NAME] [--no-window]` | the session for `PATH` (default `.`): a live one min-cursor made is reused, else one is activated with `--loadout cursor`; then Cursor opens `/workbench` in it. Prints `min-cursor.NAME` |
 | `min-cursor new [PATH \| --empty] [-n NAME] [--no-window]` | always a new session for `PATH`, then Cursor; `--empty`: an empty `/workbench` (`--sync none`), named by min (`box-<hex>`) |
-| `min-cursor attach [NAME] [--no-window]` | an existing session in Cursor (no NAME: pick one) |
-| `min-cursor destroy [-y] [--if-idle] [--force] [NAME]` | ask `[y/N]`, then destroy (no NAME: the one session for the current directory); `--if-idle` refuses with exit 3 while something is connected. Without a terminal, min refuses a session with unsaved changes: exit 4; `-y --force` discards them |
+| `min-cursor attach [NAME] [--no-window]` | an existing session in Cursor (no NAME: pick one of its own) |
+| `min-cursor destroy [-y] [--if-idle] [--force] [NAME]` | ask `[y/N]`, then destroy (no NAME: its one session for the current directory); `--if-idle` refuses with exit 3 while something is connected. Without a terminal, min refuses a session with unsaved changes: exit 4; `-y --force` discards them |
 | `min-cursor gc [--older-than SECONDS] [--dry-run]` | list active sessions no ssh client is using (oldest first), then ask `[y/N/q]` for each |
 | `min-cursor status [--json]` | table: session, status, project, in use, idle age; `--json`: `[{name, status, project, own, empty, in_use, idle}]` (idle in seconds or null) |
 | `min-cursor doctor` | health report; exits 1 on any FAIL |
@@ -33,7 +33,8 @@ become hostnames and ssh `Host` patterns; one that does not is refused.
 `gc` or `status` that saw the session unused (each run dates them).
 `gc` offers only sessions min-cursor has connected to (it has keys for them
 under `STATE/sessions/NAME`); boxes other tools or `min` alone made are not its
-to tidy.
+to tidy. `open`, `destroy` without NAME, the `attach` picker and completions
+pass them over too; `attach NAME` still reaches one by name.
 
 just recipes: `check`, `install`, `ssh-config`, `cursor-config`, `skills`,
 `uninstall`, `ext-deps`, `vsix`.
