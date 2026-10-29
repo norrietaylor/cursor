@@ -1,0 +1,9 @@
+#!/bin/sh
+# Stub for the Cursor CLI: logs argv; --version and --list-extensions from
+# STUB_CURSOR_COMMIT and $FIXTURES/no-remote-ssh.
+echo "cursor $*" >> "$STUB_LOG"
+case ${1:-} in
+    --version) printf '3.23.12\n%s\narm64\n' "${STUB_CURSOR_COMMIT-0123456789abcdef0123456789abcdef01234567}" ;;
+    --list-extensions) [ -f "$FIXTURES/no-remote-ssh" ] || echo anysphere.remote-ssh; echo anysphere.remote-containers ;;
+esac
+exit 0

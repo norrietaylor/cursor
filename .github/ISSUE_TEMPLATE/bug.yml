@@ -1,0 +1,33 @@
+name: Bug report
+description: min-cursor is broken or behaving unexpectedly
+labels: ["bug"]
+body:
+  - type: textarea
+    id: doctor
+    attributes:
+      label: min-cursor doctor
+      description: Output of `min-cursor doctor`, run on the host.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: cursor-version
+    attributes:
+      label: Cursor version
+      placeholder: cursor --version
+    validations:
+      required: true
+  - type: input
+    id: min-version
+    attributes:
+      label: min version
+      placeholder: min version
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what you saw. The Remote-SSH output panel (anysphere.remote-ssh) and `~/.local/state/min-cursor/proxy.log` often help.
+    validations:
+      required: true
