@@ -6,7 +6,8 @@ Environment variables:
 |---|---|---|
 | `MIN_CURSOR_STATE_DIR` | `${XDG_STATE_HOME:-~/.local/state}/min-cursor` | state directory (keys, facts, backups, logs) |
 | `MIN_CURSOR_SETTINGS` | `~/Library/Application Support/Cursor/User/settings.json` | the settings file `config` edits |
-| `MIN_CURSOR_EDITOR_BIN` | `cursor` | the Cursor CLI (stable Cursor only; Nightly is untested) |
+| `MIN_CURSOR_EDITOR_BIN` | `cursor`, else the app's own | the Cursor CLI (stable Cursor only; Nightly is untested) |
+| `MIN_CURSOR_EDITOR_APP` | `/Applications/Cursor.app` | where the CLI looks for Cursor's own `cursor` when it is not on PATH |
 | `MIN_LOCK_WAIT` | 10 | seconds `ssh-config` waits for the `~/.ssh/config` lock |
 | `MIN_CURSOR_DEBUG` | unset | log the editor command and other detail |
 | `MIN_BIN` | `min` on PATH | `min` binary; resolved to an absolute path for the ProxyCommand |
