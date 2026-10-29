@@ -87,6 +87,14 @@ run_stdin() {
     printf '%s' "$input" | sh "$BIN" "$@" > "$T/out" 2> "$T/err"
     RC=$?
 }
+# run_tty INPUT ARGS...: stdin a terminal that has INPUT typed into it.
+run_tty() {
+    input=$1; shift
+    python3 -c 'import os, subprocess, sys
+m, s = os.openpty(); os.write(m, sys.argv[1].encode())
+sys.exit(subprocess.call(sys.argv[2:], stdin=s))' "$input" sh "$BIN" "$@" > "$T/out" 2> "$T/err"
+    RC=$?
+}
 # run_cfg ARGS...: the merger against $SETTINGS with the test state dir.
 run_cfg() {
     python3 "$CFG" --settings "$SETTINGS" --state "$STATE" "$@" > "$T/out" 2> "$T/err" < /dev/null
@@ -204,6 +212,28 @@ case_open_reuses_live_session_for_path() {
     assert_log_contains "cursor --remote ssh-remote+${HP}alpha /workbench"
 }
 
+# A live box another tool (or min alone) made for PATH is not reused: open
+# activates its own.
+case_open_skips_foreign_session_for_path() {
+    installed
+    cat > "$FIXTURES/sessions.json" <<JSON
+{"sessions":[{"id":"ID-A","name":"alpha","project_path":"$AP","status":"active"},
+ {"id":"ID-F","name":"foreign","project_path":"$P","status":"active"}]}
+JSON
+    cat > "$FIXTURES/sessions.after.json" <<JSON
+{"sessions":[{"id":"ID-A","name":"alpha","project_path":"$AP","status":"active"},
+ {"id":"ID-F","name":"foreign","project_path":"$P","status":"active"},
+ {"id":"ID-N","name":"proj-amber","project_path":"$P","status":"active"}]}
+JSON
+    reset_log
+    run open "$P"
+    assert_rc 0
+    assert_out_eq "${HP}proj-amber"
+    assert_log_contains "min session activate --no-prompt --loadout cursor $P"
+    assert_log_not_contains "min session exec foreign"
+    assert_no_file "$STATE/sessions/foreign"
+}
+
 case_open_needs_ssh_config() {
     sessions_after proj-amber "$P"
     run open "$P"
@@ -264,6 +294,26 @@ case_attach_picker_rejects_zero() {
     run attach
     assert_rc 1
     assert_err_contains "attach: NAME required when stdin is not a terminal"
+}
+
+# The picker selects from the list it showed: a session that becomes own
+# while it waits does not shift the numbers.
+case_attach_picker_uses_shown_list() {
+    installed
+    cat > "$FIXTURES/sessions.json" <<JSON
+{"sessions":[{"id":"ID-Z","name":"aaa","project_path":"$P","status":"active"},
+ {"id":"ID-A","name":"alpha","project_path":"$AP","status":"active"}]}
+JSON
+    # aaa becomes own once the picker has asked (any earlier min ls is left alone)
+    printf 'grep -q "session number" "%s/err" && mkdir -p "%s/sessions/aaa"\n' "$T" "$STATE" > "$FIXTURES/ls.hook"
+    reset_log
+    run_tty '1
+' attach
+    assert_rc 0
+    assert_err_contains " 1) alpha"
+    assert_log_contains "cursor --remote ssh-remote+${HP}alpha /workbench"
+    assert_log_not_contains "min session exec aaa"
+    [ -d "$STATE/sessions/aaa" ] || fail "aaa never became own after the prompt"
 }
 
 case_open_without_editor_fails_after_prepare() {
@@ -354,6 +404,24 @@ case_destroy_by_cwd() {
 
 # own NAME...: sessions this tool has prepared (a key dir), the only ones gc offers.
 own() { for o in "$@"; do mkdir -p "$STATE/sessions/$o"; done; }
+
+# destroy without NAME looks only at own sessions for the cwd: another tool's
+# box for the same directory is neither picked nor counted.
+case_destroy_by_cwd_only_own() {
+    own beta
+    cat > "$FIXTURES/sessions.json" <<JSON
+{"sessions":[{"id":"ID-A","name":"alpha","project_path":"$AP","status":"active"},
+ {"id":"ID-B","name":"beta","project_path":"$AP","status":"active"}]}
+JSON
+    (cd "$AP" && sh "$BIN" destroy -y > "$T/out" 2> "$T/err" < /dev/null); RC=$?
+    assert_rc 0
+    assert_log_contains "min session destroy beta"
+    assert_log_not_contains "min session destroy alpha"
+    (cd "$AP" && sh "$BIN" destroy -y > "$T/out" 2> "$T/err" < /dev/null); RC=$?
+    assert_rc 1
+    assert_err_contains "no session for $AP; pass NAME"
+    assert_log_not_contains "min session destroy alpha"
+}
 
 orphan_sessions() {
     own alpha beta gamma stopped
@@ -1373,7 +1441,13 @@ case_completions_parse() {
     assert_rc 1
 }
 
+# Completions offer only own sessions, not another tool's beta.
 case_sessions_lists_names() {
+    own alpha
+    cat > "$FIXTURES/sessions.json" <<JSON
+{"sessions":[{"id":"ID-A","name":"alpha","project_path":"$AP","status":"active"},
+ {"id":"ID-B","name":"beta","project_path":"$T/beta-proj","status":"active"}]}
+JSON
     run _sessions
     assert_out_eq alpha
 }
@@ -1570,11 +1644,12 @@ case_gc_no_own_sessions_yet() {
 }
 
 CASES="
-gc_no_own_sessions_yet open_activates_and_launches_editor open_reuses_live_session_for_path open_needs_ssh_config
+gc_no_own_sessions_yet open_activates_and_launches_editor open_reuses_live_session_for_path open_skips_foreign_session_for_path
+open_needs_ssh_config
 open_rejects_non_directory_and_bad_name open_name_for_other_dir new_always_activates
-attach_launches_existing attach_picker_rejects_zero open_without_editor_fails_after_prepare open_editor_falls_back_to_app
+attach_launches_existing attach_picker_rejects_zero attach_picker_uses_shown_list open_without_editor_fails_after_prepare open_editor_falls_back_to_app
 names_from_min
-destroy_asks_and_cleans_up destroy_by_cwd in_use_reads_ps gc_lists_oldest_first_and_asks
+destroy_asks_and_cleans_up destroy_by_cwd destroy_by_cwd_only_own in_use_reads_ps gc_lists_oldest_first_and_asks
 gc_offers_only_own_sessions status_tracks_orphans status_table
 settings_untouched_before_opt_in settings_follow_sessions settings_sync_skipped_when_min_ls_fails
 config_print_and_bad_option config_and_doctor_keep_entries_when_min_ls_fails merger_remove_restores_framing merger_fresh_file_and_noop merger_writes_only_remote_platform

@@ -12,7 +12,9 @@ echo "$line" >> "$STUB_LOG"
 case "${1:-} ${2:-}" in
     "version "*) printf 'Client: minimal %s\nServer: minimald 0.7.0\n' "${STUB_MIN_VERSION:-0.7.0}" ;;
     "loadout list") cat "$FIXTURES/loadouts.txt" 2>/dev/null ;;
-    "ls --json") cat "$FIXTURES/sessions.json" ;;
+    "ls --json")
+        cat "$FIXTURES/sessions.json"
+        [ ! -f "$FIXTURES/ls.hook" ] || sh "$FIXTURES/ls.hook" ;;   # e.g. a session becomes own meanwhile
     "session activate")
         [ -f "$FIXTURES/sessions.after.json" ] && cp "$FIXTURES/sessions.after.json" "$FIXTURES/sessions.json"
         exit 0 ;;
