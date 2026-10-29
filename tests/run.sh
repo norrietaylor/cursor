@@ -313,6 +313,7 @@ JSON
     assert_err_contains " 1) alpha"
     assert_log_contains "cursor --remote ssh-remote+${HP}alpha /workbench"
     assert_log_not_contains "min session exec aaa"
+    [ -d "$STATE/sessions/aaa" ] || fail "aaa never became own after the prompt"
 }
 
 case_open_without_editor_fails_after_prepare() {
