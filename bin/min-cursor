@@ -745,6 +745,11 @@ humanise_age() {
 # ---- client constants: every editor-specific value ---------------------------
 EDITOR_NAME="Cursor"
 EDITOR_BIN=${MIN_CURSOR_EDITOR_BIN:-cursor}          # host CLI that opens a window
+EDITOR_APP=${MIN_CURSOR_EDITOR_APP:-/Applications/Cursor.app}
+# Without the shell command on PATH, the CLI inside the app.
+if [ -z "${MIN_CURSOR_EDITOR_BIN:-}" ] && ! have "$EDITOR_BIN" && [ -x "$EDITOR_APP/Contents/Resources/app/bin/cursor" ]; then
+    EDITOR_BIN=$EDITOR_APP/Contents/Resources/app/bin/cursor
+fi
 REMOTE_EXT=anysphere.remote-ssh                      # Cursor's own Remote-SSH (not Microsoft's)
 REMOTE_AUTHORITY=ssh-remote                          # --remote <authority>+HOST
 SETTINGS_DEFAULT="$HOME/Library/Application Support/Cursor/User/settings.json"

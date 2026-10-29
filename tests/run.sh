@@ -273,6 +273,21 @@ case_open_without_editor_fails_after_prepare() {
     assert_err_contains "$T/no-cursor not found"
 }
 
+# No cursor on PATH and no MIN_CURSOR_EDITOR_BIN: the CLI inside the app.
+case_open_editor_falls_back_to_app() {
+    installed
+    rm "$T/bin/cursor"
+    mkdir -p "$T/App.app/Contents/Resources/app/bin"
+    ln -s "$STUBS/cursor" "$T/App.app/Contents/Resources/app/bin/cursor"
+    unset MIN_CURSOR_EDITOR_BIN
+    MIN_CURSOR_EDITOR_APP=$T/App.app run attach alpha
+    assert_rc 0
+    assert_log_contains "cursor --remote ssh-remote+${HP}alpha /workbench"
+    MIN_CURSOR_EDITOR_APP=$T/no-app run attach alpha
+    assert_rc 1
+    assert_err_contains "cursor not found"
+}
+
 # ---- names ---------------------------------------------------------------------
 
 # min names a new session; we take the one new session for the path.
@@ -1557,7 +1572,7 @@ case_gc_no_own_sessions_yet() {
 CASES="
 gc_no_own_sessions_yet open_activates_and_launches_editor open_reuses_live_session_for_path open_needs_ssh_config
 open_rejects_non_directory_and_bad_name open_name_for_other_dir new_always_activates
-attach_launches_existing attach_picker_rejects_zero open_without_editor_fails_after_prepare
+attach_launches_existing attach_picker_rejects_zero open_without_editor_fails_after_prepare open_editor_falls_back_to_app
 names_from_min
 destroy_asks_and_cleans_up destroy_by_cwd in_use_reads_ps gc_lists_oldest_first_and_asks
 gc_offers_only_own_sessions status_tracks_orphans status_table
