@@ -918,6 +918,48 @@ case_setup_installs_follows_and_removes() {
 }
 
 # A settings file the merger refuses stops setup --remove before anything else goes.
+# Run through its ~/.local/bin link (how users run it), setup finds the
+# checkout behind the link: --remove takes both links out, and the skills
+# directory it made.
+case_setup_through_link() {
+    cl=$HOME/.local/bin/$TOOL
+    ld=$HOME/.config/minimal/loadouts/cursor.toml
+    run setup
+    assert_rc 0
+    sh "$cl" setup > "$T/out" 2> "$T/err" < /dev/null; RC=$?
+    assert_rc 0
+    [ "$(readlink "$cl")" = "$SELF" ] || fail "CLI link: $(readlink "$cl")"
+    sh "$cl" setup --remove > "$T/out" 2> "$T/err" < /dev/null; RC=$?
+    assert_rc 0
+    assert_no_file "$cl"
+    assert_no_file "$ld"
+    assert_no_file "$HOME/.cursor/skills"
+}
+
+# A skill another min-<client> installed too (its own .min-*-copy mark) is
+# shared: setup takes it over keeping that mark, --remove takes only ours out
+# and leaves the skill to the other tool; the skills directory setup made
+# goes once it is empty.
+case_setup_shares_skills_with_other_tools() {
+    sk=$HOME/.cursor/skills
+    src=$(cd "$BINDIR/.." && pwd -P)/skills
+    mkdir -p "$sk/minimal-config"; echo old > "$sk/minimal-config/SKILL.md"; echo /x > "$sk/minimal-config/.min-vscode-copy"
+    run setup
+    assert_rc 0
+    assert_file "$sk/minimal-config/.min-vscode-copy" /x
+    assert_file "$sk/minimal-config/.$TOOL-copy"
+    cmp -s "$sk/minimal-config/SKILL.md" "$src/minimal-config/SKILL.md" || fail "shared skill not updated"
+    run setup
+    assert_rc 0
+    assert_file "$sk/minimal-config/.min-vscode-copy" /x
+    run setup --remove
+    assert_rc 0
+    assert_err_contains "left $sk/minimal-config: also installed by min-vscode"
+    assert_file "$sk/minimal-config/.min-vscode-copy" /x
+    assert_no_file "$sk/minimal-config/.$TOOL-copy"
+    assert_no_file "$sk/minimal-setup"
+}
+
 case_setup_remove_stops_when_config_refuses() {
     cl=$HOME/.local/bin/$TOOL
     ld=$HOME/.config/minimal/loadouts/cursor.toml
@@ -1677,7 +1719,7 @@ settings_untouched_before_opt_in settings_follow_sessions settings_sync_skipped_
 config_print_and_bad_option config_and_doctor_keep_entries_when_min_ls_fails merger_remove_restores_framing merger_fresh_file_and_noop merger_writes_only_remote_platform
 merger_symlink_written_through merger_preserves_foreign_entries_cursor_put_in_block
 merger_refuses_foreign_keys_in_block merger_bad_jsonc_left_alone doctor_rows doctor_min_version
-new_empty_no_window attach_no_window destroy_if_idle destroy_unsaved_needs_force status_json setup_installs_follows_and_removes setup_remove_stops_when_config_refuses
+new_empty_no_window attach_no_window destroy_if_idle destroy_unsaved_needs_force status_json setup_installs_follows_and_removes setup_remove_stops_when_config_refuses setup_through_link setup_shares_skills_with_other_tools
 loadout_rc_line_once
 sshconfig_install_creates_include_and_stanza sshconfig_remove_restores_original
 sshconfig_coexists_with_another_tool sshconfig_keeps_symlinked_config sshconfig_print_touches_nothing
