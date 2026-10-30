@@ -36,8 +36,9 @@ patches = [
 # `env -0` and filtered exactly as PREP filters it. sshd reads the file
 # literally, and GNU env (coreutils 9.12, in the box) shell-quotes a value with
 # a space or a shell metacharacter; `env -0` prints raw values, and an entry
-# whose value holds a newline is dropped (the file cannot carry one). The
-# greps run under LC_ALL=C, so a value that is not valid UTF-8 is kept. The
+# whose value holds a newline is dropped (the file cannot carry one). tr
+# and the greps run under LC_ALL=C, so a value that is not valid UTF-8 is
+# kept. The
 # filter drops PROMPT_COMMAND (minimald's trigger for the attach banner; it
 # breaks an ssh-started bash); MINIMAL_MOTD, the banner itself, is kept for
 # the `min:motd` rc line.
@@ -61,7 +62,7 @@ on_activate.type = "inline"
 on_activate.value = '''
 umask 077
 mkdir -p "$HOME/.ssh" </dev/null || true
-env -0 </dev/null | tr '\n\0' '\001\n' | LC_ALL=C grep -v "$(printf '\001')" | LC_ALL=C grep -E "^[A-Za-z_][A-Za-z0-9_]*=" | LC_ALL=C grep -Ev "^(TERM|PWD|OLDPWD|SHLVL|_|HOME|USER|LOGNAME|PATH|SSH_[A-Z_]*|PROMPT_COMMAND)=" > "$HOME/.ssh/environment" || true
+env -0 </dev/null | LC_ALL=C tr '\n\0' '\001\n' | LC_ALL=C grep -v "$(printf '\001')" | LC_ALL=C grep -E "^[A-Za-z_][A-Za-z0-9_]*=" | LC_ALL=C grep -Ev "^(TERM|PWD|OLDPWD|SHLVL|_|HOME|USER|LOGNAME|PATH|SSH_[A-Z_]*|PROMPT_COMMAND)=" > "$HOME/.ssh/environment" || true
 motd='case $- in *i*) if [ -n "${SSH_CONNECTION:-}" ] && [ -t 1 ] && [ -n "${MINIMAL_MOTD:-}" ]; then MINIMAL_DETACH_HINT="exit or close the terminal"; eval "$MINIMAL_MOTD" 2>/dev/null; unset MINIMAL_MOTD MINIMAL_DETACH_HINT; fi ;; esac'
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
   if ! grep -qs "min:workbench" "$rc" </dev/null; then

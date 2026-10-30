@@ -1080,19 +1080,26 @@ case_loadout_env_keeps_motd() {
 }
 
 # assert_env_unquoted FILE: the env file written under the GNU env stub
-# (FOO='a b', ML spanning two lines) holds FOO raw and nothing from ML.
+# (FOO='a b', ML spanning two lines, RAW not UTF-8) holds FOO raw, nothing
+# from ML, and RAW (GNU grep in a UTF-8 locale drops it). In the C locale:
+# grep elsewhere fails on RAW's byte.
+RAW=$(printf 'x\377y')
 assert_env_unquoted() {
-    assert_file_contains "$1" "FOO=a b"
-    assert_file_not_contains "$1" "FOO='"
-    assert_file_not_contains "$1" "ML="
-    assert_file_not_contains "$1" "EVIL="
+    (
+        LC_ALL=C; export LC_ALL
+        assert_file_contains "$1" "FOO=a b"
+        assert_file_not_contains "$1" "FOO='"
+        assert_file_not_contains "$1" "ML="
+        assert_file_not_contains "$1" "EVIL="
+        assert_line_in "$(cat "$1")" "RAW=$RAW"
+    )
 }
 
 # GNU env shell-quotes values; sshd would read the quotes as part of them.
 case_loadout_env_unquoted() {
     B=$T/box; mkdir -p "$B"
     ln -s "$STUBS/env" "$T/bin/env"
-    HOME=$B FOO='a b' ML='x
+    HOME=$B FOO='a b' RAW=$RAW ML='x
 EVIL=1' sh -c "$(loadout_hook 0)" < /dev/null
     assert_env_unquoted "$B/.ssh/environment"
 }
@@ -1621,7 +1628,7 @@ case_prep_env_keeps_motd() {
 
 case_prep_env_unquoted() {
     ln -s "$STUBS/env" "$T/bin/env"
-    FOO='a b' ML='x
+    FOO='a b' RAW=$RAW ML='x
 EVIL=1' run_prep "$T/p1" || fail "PREP failed: $(cat "$T/p1.err")"
     assert_env_unquoted "$T/box/.ssh/environment"
 }
