@@ -14,7 +14,7 @@ which also work alone from a terminal.
 | plumbing | transport, PREP/prepare, `stored_path`, ssh options and stanzas, `ssh-config`, `_proxy`, `ssh`, naming, `activate_session`, `destroy_one`, `in_use_names`/`box_in_use`, `track_orphans`, `default_loadouts`, the ssh-config record, report helpers; editor-neutral, reaching the client layer only through its hooks |
 | client layer | `open`/`new`/`attach` (session, stanza, settings, `cursor --remote` unless `--no-window`; `new --empty`), `destroy` (`--if-idle`), `gc`, `status` (`--json`), `doctor`, `completions`, `config`, `setup`, hidden `_sessions`; hooks `client_on_connect` and `client_on_destroy` (settings sync) |
 | `bin/min-cursor-config` | python3: marked-block merge of per-host `remote.SSH.remotePlatform` (the only key; Cursor has no `useLocalServer`) into Cursor's user settings.json; `--install`, `--sync NAME...`, `--remove`, `--doctor`, `--dry-run` |
-| `loadouts/cursor.toml`, `loadouts/cursor/` | `openssh curl rsync xxhash git`; sshd env prep; `min:workbench` rc line; a patch copying `cursor/skills/minimal-sandbox` to `~/.cursor/skills` in the box. `setup` copies `cursor/` beside the linked toml: `$LOADOUT_ROOT` must be a real directory |
+| `loadouts/cursor.toml`, `loadouts/cursor/` | `openssh curl rsync xxhash git`; sshd env prep; `min:workbench` and `min:motd` rc lines; a patch copying `cursor/skills/minimal-sandbox` to `~/.cursor/skills` in the box. `setup` copies `cursor/` beside the linked toml: `$LOADOUT_ROOT` must be a real directory |
 | `skills/`, `loadouts/cursor/skills/` | Minimal's skills, vendored from gominimal/minimal-skills (MIT) at a pinned commit by `just skills`: the host ones (`setup` copies them into the Mac's `~/.cursor/skills`, marked `.min-cursor-copy`, never over a dir with no `.min-*-copy` mark; one another min tool marked is shared, keeping its mark, and `--remove` deletes it only once no other mark is left) and `minimal-sandbox` (box only: the host ones teach commands a box lacks) |
 | `extension/` | the Cursor extension (TypeScript, `extensionKind: ui`): Minimal view, commands, status bar; every action is a `min-cursor` call. The VSIX bundles `bin/`, `loadouts/` and `skills/` under `cli/` |
 | `minimal.toml` | developing this repo in a box: session packages for `just check`/`just vsix`; tasks `check`, `vsix` (`min task run check`) |
@@ -121,7 +121,14 @@ which also work alone from a terminal.
 - The box is uid 1000 with `$HOME=/home`, aarch64, glibc 2.44, has bash, tar,
   curl, python3, zsh; `sshd` at `/usr/sbin/sshd`.
 - sshd scrubs the environment: PREP writes `~/.ssh/environment` (filtering
-  `PROMPT_COMMAND`/`MINIMAL_MOTD`) and sshd runs with `PermitUserEnvironment=yes`.
+  `PROMPT_COMMAND`, the attach shell's banner trigger) and sshd runs with
+  `PermitUserEnvironment=yes`. `MINIMAL_MOTD` is kept: the `min:motd` rc line
+  prints it in the first interactive shell that has `SSH_CONNECTION` and
+  whose stdout is a TTY, then unsets it (a non-TTY probe leaves it set). A
+  `min session attach` shell sources `~/.bashrc`/`~/.zshrc` too, without
+  `SSH_CONNECTION`; there minimald's own `PROMPT_COMMAND` prints the banner
+  with the real detach chord. Both writers replace a `min:motd` line that
+  differs.
 - In the box, the host key and `authorized_keys` live in `~/.ssh/min-cursor/`.
 - Without a terminal, `min session destroy` refuses a box with unsaved
   changes ("refusing to destroy the session without confirmation; pass
@@ -146,3 +153,5 @@ which also work alone from a terminal.
 - Destroying the box a window is on closes that remote connection.
 - GPG forwarding's `accept-new` cleanup ssh; the `remotePlatform` entry is
   used.
+- The `min:motd` banner shows once in a Cursor terminal over real sshd, and
+  Cursor's shell-env probe leaves `MINIMAL_MOTD` for it.

@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Minimal's banner now shows in ssh shells: each new Cursor terminal and an
+  interactive `min-cursor ssh` session print it once, with
+  "exit or close the terminal" as the detach hint. `min session attach`
+  shells are unchanged.
+
 ### Fixed
 
 - `destroy` and `gc`: a failed `min ls` after the answer no longer counts as
