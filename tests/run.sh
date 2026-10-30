@@ -1096,7 +1096,7 @@ case_motd_rc_line_quiet_without_tty() {
     for sh in bash zsh; do
         command -v $sh >/dev/null 2>&1 || continue
         # shellcheck disable=SC2016 # literal on purpose
-        HOME=$B ZDOTDIR=$B MINIMAL_MOTD='echo BANNER' $sh -i -c 'echo "[$MINIMAL_MOTD]"' > "$T/o.$sh" 2>/dev/null < /dev/null
+        HOME=$B ZDOTDIR=$B SSH_CONNECTION='10.0.0.1 1 10.0.0.2 22' MINIMAL_MOTD='echo BANNER' $sh -i -c 'echo "[$MINIMAL_MOTD]"' > "$T/o.$sh" 2>/dev/null < /dev/null
         [ "$(cat "$T/o.$sh")" = "[echo BANNER]" ] || fail "$sh -i off a tty printed: $(cat "$T/o.$sh")"
     done
 }
@@ -1112,9 +1112,10 @@ on_tty() {
     fi | tr -d '\r\004\010' | sed 's/^\^D//'
 }
 
-# On a terminal the banner prints once and is unset. A MINIMAL_MOTD that
-# does not parse (~/.ssh/environment keeps only a value's first line)
-# prints nothing, not a syntax error in every shell.
+# On a terminal over ssh the banner prints once, with the ssh detach hint in
+# place of the attach one, and is unset. A MINIMAL_MOTD that does not parse
+# (~/.ssh/environment keeps only a value's first line) prints nothing, not a
+# syntax error in every shell.
 case_motd_rc_line_on_tty() {
     command -v script >/dev/null 2>&1 || return 0
     B=$T/box; mkdir -p "$B"
@@ -1122,12 +1123,50 @@ case_motd_rc_line_on_tty() {
     for sh in bash zsh; do
         command -v $sh >/dev/null 2>&1 || continue
         # shellcheck disable=SC2016 # literal on purpose
-        c="$sh"' -i -c '\''echo "[${MINIMAL_MOTD-unset}]"'\'
-        HOME=$B ZDOTDIR=$B MINIMAL_MOTD='echo BANNER' on_tty "$c" > "$T/o.$sh"
-        [ "$(cat "$T/o.$sh")" = "BANNER
-[unset]" ] || fail "$sh -i on a tty printed: $(cat "$T/o.$sh")"
-        HOME=$B ZDOTDIR=$B MINIMAL_MOTD='if' on_tty "$c" > "$T/o.$sh"
-        [ "$(cat "$T/o.$sh")" = "[unset]" ] || fail "$sh -i, MINIMAL_MOTD=if, printed: $(cat "$T/o.$sh")"
+        c="$sh"' -i -c '\''echo "[${MINIMAL_MOTD-unset}|${MINIMAL_DETACH_HINT-unset}]"'\'
+        # shellcheck disable=SC2016 # literal on purpose
+        HOME=$B ZDOTDIR=$B SSH_CONNECTION='10.0.0.1 1 10.0.0.2 22' MINIMAL_DETACH_HINT='ctrl-] then d' \
+            MINIMAL_MOTD='echo "BANNER detach: ${MINIMAL_DETACH_HINT:-none}"' on_tty "$c" > "$T/o.$sh"
+        [ "$(cat "$T/o.$sh")" = "BANNER detach: exit or close the terminal
+[unset|unset]" ] || fail "$sh -i on a tty printed: $(cat "$T/o.$sh")"
+        HOME=$B ZDOTDIR=$B SSH_CONNECTION='10.0.0.1 1 10.0.0.2 22' MINIMAL_MOTD='if' on_tty "$c" > "$T/o.$sh"
+        [ "$(cat "$T/o.$sh")" = "[unset|unset]" ] || fail "$sh -i, MINIMAL_MOTD=if, printed: $(cat "$T/o.$sh")"
+    done
+}
+
+# A `min session attach` shell (a terminal, minimald's PROMPT_COMMAND and
+# detach hint, no SSH_CONNECTION) is left alone: minimald prints the banner
+# there with the real detach chord.
+case_motd_rc_line_skips_attach_shell() {
+    command -v script >/dev/null 2>&1 || return 0
+    B=$T/box; mkdir -p "$B"
+    HOME=$B sh -c "$(loadout_hook 0)" < /dev/null
+    for sh in bash zsh; do
+        command -v $sh >/dev/null 2>&1 || continue
+        # shellcheck disable=SC2016 # literal on purpose
+        c="$sh"' -i -c '\''echo "[${MINIMAL_MOTD-unset}|${MINIMAL_DETACH_HINT-unset}]"'\'
+        # shellcheck disable=SC2016 # literal on purpose
+        HOME=$B ZDOTDIR=$B SSH_CONNECTION='' PROMPT_COMMAND='eval "$MINIMAL_MOTD"' \
+            MINIMAL_DETACH_HINT='ctrl-] then d' MINIMAL_MOTD='echo BANNER' on_tty "$c" > "$T/o.$sh"
+        [ "$(cat "$T/o.$sh")" = "[echo BANNER|ctrl-] then d]" ] || fail "$sh -i in an attach shell printed: $(cat "$T/o.$sh")"
+    done
+}
+
+# An older `min:motd` line (marker and line) is replaced, by either writer,
+# and the rest of the rc file is kept.
+case_motd_rc_line_replaces_older() {
+    B=$T/lb; mkdir -p "$B" "$T/box"
+    for f in "$B/.bashrc" "$T/box/.bashrc"; do
+        printf '%s\n' 'alias ll=ls' '# min:motd (managed by min-cursor)' 'case $- in *i*) echo old ;; esac' 'export A=1' > "$f"
+    done
+    HOME=$B sh -c "$(loadout_hook 0)" < /dev/null
+    run_prep "$T/p1" || fail "PREP failed: $(cat "$T/p1.err")"
+    for f in "$B/.bashrc" "$T/box/.bashrc"; do
+        [ "$(grep -c 'min:motd' "$f")" = 1 ] || fail "$f: $(cat "$f")"
+        assert_file_not_contains "$f" "echo old"
+        assert_file_contains "$f" "SSH_CONNECTION"
+        assert_file_contains "$f" "alias ll=ls"
+        assert_file_contains "$f" "export A=1"
     done
 }
 
@@ -1863,7 +1902,7 @@ config_print_and_bad_option config_and_doctor_keep_entries_when_min_ls_fails mer
 merger_symlink_written_through merger_preserves_foreign_entries_cursor_put_in_block
 merger_refuses_foreign_keys_in_block merger_bad_jsonc_left_alone doctor_rows doctor_min_version
 new_empty_no_window attach_no_window destroy_if_idle destroy_unsaved_needs_force status_json setup_installs_follows_and_removes setup_remove_stops_when_config_refuses setup_through_link setup_shares_skills_with_other_tools
-loadout_rc_line_once loadout_env_keeps_motd prep_and_loadout_rc_lines_agree motd_rc_line_quiet_without_tty motd_rc_line_on_tty
+loadout_rc_line_once loadout_env_keeps_motd prep_and_loadout_rc_lines_agree motd_rc_line_quiet_without_tty motd_rc_line_on_tty motd_rc_line_skips_attach_shell motd_rc_line_replaces_older
 sshconfig_install_creates_include_and_stanza sshconfig_remove_restores_original
 sshconfig_coexists_with_another_tool sshconfig_keeps_symlinked_config sshconfig_print_touches_nothing
 sshconfig_destroy_drops_stanza sshconfig_stale_and_invalid_dirs_skipped sshconfig_real_ssh_resolves

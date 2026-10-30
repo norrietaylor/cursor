@@ -40,10 +40,14 @@ patches = [
 # The rc lines, each added once (its marker; PREP adds the same lines on
 # connect): `min:workbench` moves an interactive shell that starts in $HOME
 # (/home, where sshd and Cursor's terminals start) to /workbench; `min:motd`
-# then prints the box's banner in the first interactive shell on a terminal,
-# with a detach hint that fits ssh, and unsets it so nested shells stay quiet.
-# ~/.ssh/environment keeps only the first line of a value, so a multi-line
-# MINIMAL_MOTD may not parse: its errors go to /dev/null.
+# then prints the box's banner in an interactive shell that came through sshd
+# (SSH_CONNECTION; ~/.ssh/environment drops SSH_*, so `min session attach`,
+# whose own PROMPT_COMMAND prints it, is left alone) and whose stdout is a
+# terminal, with a detach hint that fits ssh, and unsets it so nested shells
+# stay quiet. A `min:motd` line that differs (an older one) is replaced.
+# ~/.ssh/environment keeps a value's first line (later lines that look like
+# NAME=... become variables of their own), so a multi-line MINIMAL_MOTD may
+# not parse: its errors go to /dev/null.
 #
 # Guarded: a failure here must not abort the activation. Commands that do not
 # need stdin get </dev/null: the script itself arrives on the shell's stdin.
@@ -54,14 +58,18 @@ on_activate.value = '''
 umask 077
 mkdir -p "$HOME/.ssh" </dev/null || true
 env </dev/null | grep -E "^[A-Za-z_][A-Za-z0-9_]*=" | grep -Ev "^(TERM|PWD|OLDPWD|SHLVL|_|HOME|USER|LOGNAME|PATH|SSH_[A-Z_]*|PROMPT_COMMAND)=" > "$HOME/.ssh/environment" || true
+motd='case $- in *i*) if [ -n "${SSH_CONNECTION:-}" ] && [ -t 1 ] && [ -n "${MINIMAL_MOTD:-}" ]; then MINIMAL_DETACH_HINT="exit or close the terminal"; eval "$MINIMAL_MOTD" 2>/dev/null; unset MINIMAL_MOTD MINIMAL_DETACH_HINT; fi ;; esac'
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
   if ! grep -qs "min:workbench" "$rc" </dev/null; then
     printf '%s\n' '# min:workbench (managed by min-cursor)' \
       'case $- in *i*) if [ "$PWD" = "$HOME" ] && [ -d /workbench ]; then cd /workbench; fi ;; esac' >> "$rc" </dev/null || true
   fi
-  if ! grep -qs "min:motd" "$rc" </dev/null; then
-    printf '%s\n' '# min:motd (managed by min-cursor)' \
-      'case $- in *i*) if [ -t 1 ] && [ -n "${MINIMAL_MOTD:-}" ]; then MINIMAL_DETACH_HINT="close the terminal"; eval "$MINIMAL_MOTD" 2>/dev/null; unset MINIMAL_MOTD MINIMAL_DETACH_HINT; fi ;; esac' >> "$rc" </dev/null || true
+  if ! grep -qsF -- "$motd" "$rc" </dev/null; then
+    if [ -f "$rc" ]; then
+      awk '/^# min:motd /{s=1;next} s{s=0;next} 1' "$rc" > "$rc.min-cursor" </dev/null && cat "$rc.min-cursor" > "$rc" </dev/null || true
+      rm -f "$rc.min-cursor" </dev/null || true
+    fi
+    printf '%s\n' '# min:motd (managed by min-cursor)' "$motd" >> "$rc" </dev/null || true
   fi
 done
 # bash login shells (what sshd starts) read ~/.bash_profile, not ~/.bashrc.

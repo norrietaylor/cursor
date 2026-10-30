@@ -123,8 +123,12 @@ which also work alone from a terminal.
 - sshd scrubs the environment: PREP writes `~/.ssh/environment` (filtering
   `PROMPT_COMMAND`, the attach shell's banner trigger) and sshd runs with
   `PermitUserEnvironment=yes`. `MINIMAL_MOTD` is kept: the `min:motd` rc line
-  prints it in the first interactive shell whose stdout is a TTY, then unsets
-  it (a non-TTY probe leaves it set).
+  prints it in the first interactive shell that has `SSH_CONNECTION` and
+  whose stdout is a TTY, then unsets it (a non-TTY probe leaves it set). A
+  `min session attach` shell sources `~/.bashrc`/`~/.zshrc` too, without
+  `SSH_CONNECTION`; there minimald's own `PROMPT_COMMAND` prints the banner
+  with the real detach chord. Both writers replace a `min:motd` line that
+  differs.
 - In the box, the host key and `authorized_keys` live in `~/.ssh/min-cursor/`.
 - Without a terminal, `min session destroy` refuses a box with unsaved
   changes ("refusing to destroy the session without confirmation; pass

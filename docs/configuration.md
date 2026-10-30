@@ -24,7 +24,7 @@ Needs min 0.7.0 or newer; `doctor` fails on an older one.
 `xxhash` and `git`, copies Minimal's `minimal-sandbox` skill into
 `~/.cursor/skills` for Cursor's agent (vendored in `loadouts/cursor/` from
 gominimal/minimal-skills; `just skills` refreshes it), prepares the in-box sshd environment, and adds the
-`min:workbench` and `min:motd` (Minimal's banner in the first terminal) rc lines. `min-cursor setup` symlinks it to
+`min:workbench` and `min:motd` (Minimal's banner in each new ssh or Cursor terminal) rc lines. `min-cursor setup` symlinks it to
 `~/.config/minimal/loadouts/cursor.toml` and copies `loadouts/cursor/` beside
 it. It is never added to
 `default_loadouts`: min-cursor activates with your `default_loadouts` plus
