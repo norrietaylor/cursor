@@ -1063,9 +1063,42 @@ case_loadout_rc_line_once() {
     B=$T/box; mkdir -p "$B"
     HOME=$B sh -c "$(loadout_hook 0)" < /dev/null
     HOME=$B sh -c "$(loadout_hook 0)" < /dev/null
-    [ "$(grep -c 'min:workbench' "$B/.bashrc")" = 1 ] || fail ".bashrc: $(cat "$B/.bashrc")"
-    [ "$(grep -c 'min:workbench' "$B/.zshrc")" = 1 ] || fail ".zshrc: $(cat "$B/.zshrc")"
+    for m in min:workbench min:motd; do
+        [ "$(grep -c "$m" "$B/.bashrc")" = 1 ] || fail ".bashrc $m: $(cat "$B/.bashrc")"
+        [ "$(grep -c "$m" "$B/.zshrc")" = 1 ] || fail ".zshrc $m: $(cat "$B/.zshrc")"
+    done
     assert_file "$B/.bash_profile"
+}
+
+# The banner reaches ssh shells: MINIMAL_MOTD stays in ~/.ssh/environment,
+# PROMPT_COMMAND (the attach shell's trigger) does not.
+case_loadout_env_keeps_motd() {
+    B=$T/box; mkdir -p "$B"
+    HOME=$B PROMPT_COMMAND='eval x' MINIMAL_MOTD='echo hi' sh -c "$(loadout_hook 0)" < /dev/null
+    assert_file_contains "$B/.ssh/environment" "MINIMAL_MOTD=echo hi"
+    assert_file_not_contains "$B/.ssh/environment" "PROMPT_COMMAND="
+}
+
+# PREP and the loadout write the same rc lines, so either may come first.
+case_prep_and_loadout_rc_lines_agree() {
+    mkdir -p "$T/box" "$T/lb"
+    run_prep "$T/p1" || fail "PREP failed: $(cat "$T/p1.err")"
+    HOME=$T/lb sh -c "$(loadout_hook 0)" < /dev/null
+    [ "$(grep -v '^#' "$T/box/.zshrc")" = "$(grep -v '^#' "$T/lb/.zshrc")" ] ||
+        fail "rc lines differ: $(cat "$T/box/.zshrc") vs $(cat "$T/lb/.zshrc")"
+}
+
+# Off a terminal (Cursor's shell-env probe) the banner prints nothing and
+# stays set for the first shell that has one.
+case_motd_rc_line_quiet_without_tty() {
+    B=$T/box; mkdir -p "$B"
+    HOME=$B sh -c "$(loadout_hook 0)" < /dev/null
+    for sh in bash zsh; do
+        command -v $sh >/dev/null 2>&1 || continue
+        # shellcheck disable=SC2016 # literal on purpose
+        HOME=$B ZDOTDIR=$B MINIMAL_MOTD='echo BANNER' $sh -i -c 'echo "[$MINIMAL_MOTD]"' > "$T/o.$sh" 2>/dev/null < /dev/null
+        [ "$(cat "$T/o.$sh")" = "[echo BANNER]" ] || fail "$sh -i off a tty printed: $(cat "$T/o.$sh")"
+    done
 }
 
 # ---- ssh-config ----------------------------------------------------------------
@@ -1490,6 +1523,14 @@ case_prep_extracts_and_prints_facts() {
     run_prep "$T/p2" || fail "second PREP failed"
     assert_log_count 1 "ssh-keygen"
     [ "$(grep -c 'min:workbench' "$T/box/.zshrc")" = 1 ] || fail "rc line repeated"
+    [ "$(grep -c 'min:motd' "$T/box/.zshrc")" = 1 ] || fail "motd rc line repeated"
+    [ "$(grep -c 'min:motd' "$T/box/.bashrc")" = 1 ] || fail "motd rc line repeated in .bashrc"
+}
+
+case_prep_env_keeps_motd() {
+    PROMPT_COMMAND='eval x' MINIMAL_MOTD='echo hi' run_prep "$T/p1" || fail "PREP failed: $(cat "$T/p1.err")"
+    assert_file_contains "$T/box/.ssh/environment" "MINIMAL_MOTD=echo hi"
+    assert_file_not_contains "$T/box/.ssh/environment" "PROMPT_COMMAND="
 }
 
 case_prep_waiter_keeps_lock_it_does_not_own() {
@@ -1792,7 +1833,7 @@ config_print_and_bad_option config_and_doctor_keep_entries_when_min_ls_fails mer
 merger_symlink_written_through merger_preserves_foreign_entries_cursor_put_in_block
 merger_refuses_foreign_keys_in_block merger_bad_jsonc_left_alone doctor_rows doctor_min_version
 new_empty_no_window attach_no_window destroy_if_idle destroy_unsaved_needs_force status_json setup_installs_follows_and_removes setup_remove_stops_when_config_refuses setup_through_link setup_shares_skills_with_other_tools
-loadout_rc_line_once
+loadout_rc_line_once loadout_env_keeps_motd prep_and_loadout_rc_lines_agree motd_rc_line_quiet_without_tty
 sshconfig_install_creates_include_and_stanza sshconfig_remove_restores_original
 sshconfig_coexists_with_another_tool sshconfig_keeps_symlinked_config sshconfig_print_touches_nothing
 sshconfig_destroy_drops_stanza sshconfig_stale_and_invalid_dirs_skipped sshconfig_real_ssh_resolves
@@ -1804,7 +1845,7 @@ proxy_prepares_then_execs_sshd proxy_never_touches_settings_or_editor proxy_fail
 proxy_missing_takes_no_host proxy_log_capped_and_private
 proxy_prepare_write_failure prepare_writes_atomically prepare_rejects_bad_facts prepare_accepts_valid_facts
 prepare_errors_strip_control_bytes stored_user_checked_on_read proxy_rechecks_stored_paths
-prep_extracts_and_prints_facts
+prep_extracts_and_prints_facts prep_env_keeps_motd
 prep_waiter_keeps_lock_it_does_not_own prep_breaks_stale_lock prep_concurrent_runs_agree_on_host_key
 prep_regenerates_half_pair prep_keygen_failure_releases_lock prep_stale_lock_stress
 open_default_loadouts_toml_forms sshconfig_lock_held_waits_then_fails

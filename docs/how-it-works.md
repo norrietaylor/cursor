@@ -42,7 +42,7 @@ PUBKEY`. PREP, in the box:
   so concurrent connects agree on one key;
 - writes `authorized_keys`;
 - rewrites `~/.ssh/environment` from `env`;
-- appends the `min:workbench` rc line (unless one is there) and a `~/.bash_profile` that sources
+- appends the `min:workbench` and `min:motd` rc lines (each unless there) and a `~/.bash_profile` that sources
   `~/.bashrc`;
 - prints `user=`, `home=`, `sshd=`, `hostkey=`.
 
