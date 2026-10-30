@@ -74,7 +74,10 @@ which also work alone from a terminal.
 - `config`/doctor never prune on a failed `min ls`. `--remove` restores the
   bytes it found (brace framing, CRLF, BOM); a user's own remotePlatform
   object that we rewrote is re-indented.
-- Activation passes the user's `default_loadouts` on before `--loadout cursor`.
+- Activation passes the user's `default_loadouts` on before `--loadout cursor`,
+  led by `--loadout built-in` (Minimal's own; gominimal/inbox#1182) when
+  `min loadout list` has a row named exactly `built-in` and the user's list
+  does not name it. A failed list adds nothing (`has_builtin_loadout`).
 - What `ssh-config` created under `~/.ssh` is recorded in
   `~/.local/state/min-clients/ssh-config-created`; removing the last
   `Include ~/.ssh/min-*.conf` deletes only that, so `~/.ssh/config` ends
