@@ -1101,6 +1101,36 @@ case_motd_rc_line_quiet_without_tty() {
     done
 }
 
+# on_tty CMD: sh -c CMD with stdout and stderr on a pty (script(1), BSD or
+# util-linux); the transcript on stdout without CR, backspaces and the
+# tty's echo of the EOF it reads from /dev/null.
+on_tty() {
+    if script --version >/dev/null 2>&1; then
+        script -qec "$1" /dev/null < /dev/null
+    else
+        script -q /dev/null sh -c "$1" < /dev/null
+    fi | tr -d '\r\004\010' | sed 's/^\^D//'
+}
+
+# On a terminal the banner prints once and is unset. A MINIMAL_MOTD that
+# does not parse (~/.ssh/environment keeps only a value's first line)
+# prints nothing, not a syntax error in every shell.
+case_motd_rc_line_on_tty() {
+    command -v script >/dev/null 2>&1 || return 0
+    B=$T/box; mkdir -p "$B"
+    HOME=$B sh -c "$(loadout_hook 0)" < /dev/null
+    for sh in bash zsh; do
+        command -v $sh >/dev/null 2>&1 || continue
+        # shellcheck disable=SC2016 # literal on purpose
+        c="$sh"' -i -c '\''echo "[${MINIMAL_MOTD-unset}]"'\'
+        HOME=$B ZDOTDIR=$B MINIMAL_MOTD='echo BANNER' on_tty "$c" > "$T/o.$sh"
+        [ "$(cat "$T/o.$sh")" = "BANNER
+[unset]" ] || fail "$sh -i on a tty printed: $(cat "$T/o.$sh")"
+        HOME=$B ZDOTDIR=$B MINIMAL_MOTD='if' on_tty "$c" > "$T/o.$sh"
+        [ "$(cat "$T/o.$sh")" = "[unset]" ] || fail "$sh -i, MINIMAL_MOTD=if, printed: $(cat "$T/o.$sh")"
+    done
+}
+
 # ---- ssh-config ----------------------------------------------------------------
 
 case_sshconfig_install_creates_include_and_stanza() {
@@ -1833,7 +1863,7 @@ config_print_and_bad_option config_and_doctor_keep_entries_when_min_ls_fails mer
 merger_symlink_written_through merger_preserves_foreign_entries_cursor_put_in_block
 merger_refuses_foreign_keys_in_block merger_bad_jsonc_left_alone doctor_rows doctor_min_version
 new_empty_no_window attach_no_window destroy_if_idle destroy_unsaved_needs_force status_json setup_installs_follows_and_removes setup_remove_stops_when_config_refuses setup_through_link setup_shares_skills_with_other_tools
-loadout_rc_line_once loadout_env_keeps_motd prep_and_loadout_rc_lines_agree motd_rc_line_quiet_without_tty
+loadout_rc_line_once loadout_env_keeps_motd prep_and_loadout_rc_lines_agree motd_rc_line_quiet_without_tty motd_rc_line_on_tty
 sshconfig_install_creates_include_and_stanza sshconfig_remove_restores_original
 sshconfig_coexists_with_another_tool sshconfig_keeps_symlinked_config sshconfig_print_touches_nothing
 sshconfig_destroy_drops_stanza sshconfig_stale_and_invalid_dirs_skipped sshconfig_real_ssh_resolves
