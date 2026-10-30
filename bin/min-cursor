@@ -595,7 +595,20 @@ default_loadouts() {
     done
 }
 
-# activate_session NAME PATH [SYNC]: a new session for PATH with the user's
+# has_builtin_loadout: the installed min ships Minimal's own loadout (mark,
+# banner, `minimal:` prompt) as `built-in` (gominimal/inbox#1182): a
+# `min loadout list` row whose NAME is exactly built-in, after an optional
+# `*` mark. Today's `default (built-in)` row is not it: that loadout cannot be
+# named. The row format is not final upstream; adjust the match here. A failed
+# list counts as no.
+has_builtin_loadout() {
+    mn loadout list </dev/null 2>/dev/null \
+        | awk '$1 == "built-in" || ($1 == "*" && $2 == "built-in") { f = 1 } END { exit !f }'
+}
+
+# activate_session NAME PATH [SYNC]: a new session for PATH with Minimal's
+# built-in loadout first when min has one (its variables yield to any other
+# loadout's) and the user's default loadouts do not name it, then the user's
 # default loadouts, then LOADOUT (last, so its settings win); SYNC is min's
 # --sync mode (none: an empty /workbench). An empty NAME lets min name it
 # (<dir>-<hex>): the one new session for PATH afterwards. Prints the name;
@@ -603,8 +616,10 @@ default_loadouts() {
 activate_session() {
     an=$1 ap=$2 async=${3:-}
     before=$(min_ls | jq -r '.sessions[].name') || die "min ls failed"
+    dls=$(default_loadouts)
     set --
-    for al in $(default_loadouts); do
+    printf '%s\n' "$dls" | grep -qx built-in || ! has_builtin_loadout || set -- --loadout built-in
+    for al in $dls; do
         case $al in
             "$LOADOUT") ;;
             *) set -- "$@" --loadout "$al" ;;

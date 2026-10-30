@@ -30,7 +30,10 @@ it. It is never added to
 `default_loadouts`: min-cursor activates with your `default_loadouts` plus
 `--loadout cursor` (min would drop the defaults once any `--loadout` is
 named, so min-cursor passes them on), and boxes made by other tools carry only
-their own loadouts (min-cursor can still attach to them).
+their own loadouts (min-cursor can still attach to them). When your min ships
+Minimal's own loadout as `built-in` (the mark, the banner and the `minimal:`
+prompt; its variables yield to any other loadout's), min-cursor adds
+`--loadout built-in` first, unless your `default_loadouts` already names it.
 
 **Settings.** See [cursor.md](cursor.md#settings-min-cursor-config).
 
