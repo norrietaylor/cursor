@@ -123,6 +123,10 @@ put() {
 # old (owner died) is broken by one waiter at a time, under .keygen.break,
 # which is itself cleared when over a minute old; without `find -mmin`
 # neither is ever broken.
+# ~/.ssh/environment comes from `env -0`: sshd reads it literally, and GNU
+# env (coreutils 9.12, in the box) shell-quotes a value with a space or a
+# shell metacharacter, which would reach ssh shells quotes and all. An entry
+# whose value holds a newline is dropped: the file has no way to carry one.
 # The rc line moves interactive shells that start in $HOME to /workbench.
 # shellcheck disable=SC2016
 PREP='set -eu
@@ -155,7 +159,7 @@ while [ ! -s "$k" ] || [ ! -s "$k.pub" ]; do
   sleep 1; i=$((i + 1))
 done
 printf "%s\n" "$1" > "$a/authorized_keys.$$" && mv -f "$a/authorized_keys.$$" "$a/authorized_keys"
-env | grep -E "^[A-Za-z_][A-Za-z0-9_]*=" | grep -Ev "^(TERM|PWD|OLDPWD|SHLVL|_|HOME|USER|LOGNAME|PATH|SSH_[A-Z_]*|PROMPT_COMMAND)=" > "$s/environment.$$" || true
+env -0 | tr "\n\0" "\001\n" | grep -v "$(printf "\001")" | grep -E "^[A-Za-z_][A-Za-z0-9_]*=" | grep -Ev "^(TERM|PWD|OLDPWD|SHLVL|_|HOME|USER|LOGNAME|PATH|SSH_[A-Z_]*|PROMPT_COMMAND)=" > "$s/environment.$$" || true
 mv -f "$s/environment.$$" "$s/environment"
 motd="case \$- in *i*) if [ -n \"\${SSH_CONNECTION:-}\" ] && [ -t 1 ] && [ -n \"\${MINIMAL_MOTD:-}\" ]; then MINIMAL_DETACH_HINT=\"exit or close the terminal\"; eval \"\$MINIMAL_MOTD\" 2>/dev/null; unset MINIMAL_MOTD MINIMAL_DETACH_HINT; fi ;; esac"
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do

@@ -14,6 +14,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Variables whose value has a space or a shell metacharacter now reach ssh
+  shells without quote characters. The box's GNU env shell-quotes such
+  values, and sshd reads `~/.ssh/environment` literally, so Minimal's banner
+  did not show in ssh shells. The file is now written from `env -0`; a
+  variable whose value has a newline is left out.
 - `destroy` and `gc`: a failed `min ls` after the answer no longer counts as
   the box being gone. Before, it removed the session's keys, refreshed
   settings and dropped its ssh stanza even after an `n`; now everything is

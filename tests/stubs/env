@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stub for env, linked only by the env_unquoted cases: GNU coreutils 9.12's
+# env, whose plain listing shell-quotes a value with a space or a quote;
+# `env -0` is the real env's raw, NUL-separated listing.
+[ "${1:-}" = -0 ] && exec /usr/bin/env "$@"
+[ $# -eq 0 ] || exec /usr/bin/env "$@"
+/usr/bin/env | sed -e "/^[A-Za-z_][A-Za-z0-9_]*=.*[ '\"]/{" -e "s/'/'\\\\''/g" -e "s/=/='/" -e "s/\$/'/" -e "}"

@@ -19,7 +19,7 @@ which also work alone from a terminal.
 | `extension/` | the Cursor extension (TypeScript, `extensionKind: ui`): Minimal view, commands, status bar; every action is a `min-cursor` call. The VSIX bundles `bin/`, `loadouts/` and `skills/` under `cli/` |
 | `minimal.toml` | developing this repo in a box: session packages for `just check`/`just vsix`; tasks `check`, `vsix` (`min task run check`) |
 | `justfile` | `check` (also type-checks `extension/`), `install`/`uninstall` (= `setup`), `ssh-config`, `cursor-config`, `skills`, `ext-deps`, `vsix` |
-| `tests/run.sh`, `tests/stubs/` | plain-sh tests over stub `min`, `cursor`, `ssh`, `ssh-keygen`, `ps` and a `tripwire` for bare GUI commands; `LONG_PREFIX=1` reruns them with a long host prefix |
+| `tests/run.sh`, `tests/stubs/` | plain-sh tests over stub `min`, `cursor`, `ssh`, `ssh-keygen`, `ps`, `env` (GNU's quoting) and a `tripwire` for bare GUI commands; `LONG_PREFIX=1` reruns them with a long host prefix |
 | `docs/` | `cursor.md` (guide, and how Cursor's Remote-SSH differs from VS Code's), `commands.md`, `configuration.md`, `security.md`, `troubleshooting.md`, `how-it-works.md`, `public/` marks and badge |
 
 ## Invariants
@@ -120,9 +120,12 @@ which also work alone from a terminal.
   Read from the extension, not yet from a box.
 - The box is uid 1000 with `$HOME=/home`, aarch64, glibc 2.44, has bash, tar,
   curl, python3, zsh; `sshd` at `/usr/sbin/sshd`.
-- sshd scrubs the environment: PREP writes `~/.ssh/environment` (filtering
-  `PROMPT_COMMAND`, the attach shell's banner trigger) and sshd runs with
-  `PermitUserEnvironment=yes`. `MINIMAL_MOTD` is kept: the `min:motd` rc line
+- sshd scrubs the environment: PREP writes `~/.ssh/environment` from
+  `env -0` (filtering `PROMPT_COMMAND`, the attach shell's banner trigger)
+  and sshd runs with `PermitUserEnvironment=yes`. sshd reads the file
+  literally; the box's GNU env (coreutils 9.12) shell-quotes a value with a
+  space or a shell metacharacter, so plain `env` would hand ssh shells the
+  quotes. An entry whose value holds a newline is dropped. `MINIMAL_MOTD` is kept: the `min:motd` rc line
   prints it in the first interactive shell that has `SSH_CONNECTION` and
   whose stdout is a TTY, then unsets it (a non-TTY probe leaves it set). A
   `min session attach` shell sources `~/.bashrc`/`~/.zshrc` too, without
