@@ -123,12 +123,14 @@ which also work alone from a terminal.
 - sshd scrubs the environment: PREP writes `~/.ssh/environment` (filtering
   `PROMPT_COMMAND`, the attach shell's banner trigger) and sshd runs with
   `PermitUserEnvironment=yes`. `MINIMAL_MOTD` is kept: the `min:motd` rc line
-  prints it in the first interactive shell that has `SSH_CONNECTION` and
-  whose stdout is a TTY, then unsets it (a non-TTY probe leaves it set). A
-  `min session attach` shell sources `~/.bashrc`/`~/.zshrc` too, without
-  `SSH_CONNECTION`; there minimald's own `PROMPT_COMMAND` prints the banner
-  with the real detach chord. Both writers replace a `min:motd` line that
-  differs.
+  is written to print it in the first interactive shell that has
+  `SSH_CONNECTION` and whose stdout is a TTY, then unsets it (a non-TTY
+  probe leaves it set). A `min session attach` shell sources
+  `~/.bashrc`/`~/.zshrc` too, without `SSH_CONNECTION`; there minimald's own
+  `PROMPT_COMMAND` prints the banner with the real detach chord. Both writers
+  replace a `min:motd` line that differs, and add a marked `min:bashrc` line
+  to an existing `~/.bash_profile` that does not mention `~/.bashrc` (sshd
+  starts a bash login shell, which reads only that file).
 - In the box, the host key and `authorized_keys` live in `~/.ssh/min-cursor/`.
 - Without a terminal, `min session destroy` refuses a box with unsaved
   changes ("refusing to destroy the session without confirmation; pass
@@ -153,5 +155,11 @@ which also work alone from a terminal.
 - Destroying the box a window is on closes that remote connection.
 - GPG forwarding's `accept-new` cleanup ssh; the `remotePlatform` entry is
   used.
-- The `min:motd` banner shows once in a Cursor terminal over real sshd, and
-  Cursor's shell-env probe leaves `MINIMAL_MOTD` for it.
+- The env of `min session exec` (where PREP runs) has MINIMAL_MOTD; without
+  it, PREP rewrites `~/.ssh/environment` without it and no ssh shell shows
+  the banner.
+- Over real sshd (`PermitUserEnvironment=yes` reading a `MINIMAL_MOTD`
+  value from `~/.ssh/environment`), a Cursor terminal and an interactive
+  `min-cursor ssh` shell show the banner once, the remote shell-env probe
+  prints nothing, and a `min session attach` shell keeps minimald's own
+  banner (the tests run the rc lines in local bash and zsh, not over sshd).

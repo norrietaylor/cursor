@@ -1134,6 +1134,24 @@ case_motd_rc_line_on_tty() {
     done
 }
 
+# An rc file with `set -e` before the line: a banner that fails (or does not
+# parse) leaves the shell running, not exited at its first prompt.
+case_motd_rc_line_survives_errexit() {
+    command -v script >/dev/null 2>&1 || return 0
+    B=$T/box; mkdir -p "$B"
+    for f in "$B/.bashrc" "$B/.zshrc"; do printf '%s\n' 'set -e' > "$f"; done
+    HOME=$B sh -c "$(loadout_hook 0)" < /dev/null
+    for sh in bash zsh; do
+        command -v $sh >/dev/null 2>&1 || continue
+        # shellcheck disable=SC2016 # literal on purpose
+        c="$sh"' -i -c '\''echo "[${MINIMAL_MOTD-unset}]"'\'
+        for m in false if; do
+            HOME=$B ZDOTDIR=$B SSH_CONNECTION='10.0.0.1 1 10.0.0.2 22' MINIMAL_MOTD=$m on_tty "$c" > "$T/o.$sh"
+            [ "$(cat "$T/o.$sh")" = "[unset]" ] || fail "$sh -i under set -e, MINIMAL_MOTD=$m, printed: $(cat "$T/o.$sh")"
+        done
+    done
+}
+
 # A `min session attach` shell (a terminal, minimald's PROMPT_COMMAND and
 # detach hint, no SSH_CONNECTION) is left alone: minimald prints the banner
 # there with the real detach chord.
@@ -1167,6 +1185,47 @@ case_motd_rc_line_replaces_older() {
         assert_file_contains "$f" "SSH_CONNECTION"
         assert_file_contains "$f" "alias ll=ls"
         assert_file_contains "$f" "export A=1"
+    done
+}
+
+# A box set up before the `|| :` (its min:motd line without it) is carried
+# to the current line by either writer: one min:motd line, the errexit-safe one.
+# shellcheck disable=SC2016 # the rc lines, literal
+case_motd_rc_line_upgrades_unguarded() {
+    old='case $- in *i*) if [ -n "${SSH_CONNECTION:-}" ] && [ -t 1 ] && [ -n "${MINIMAL_MOTD:-}" ]; then MINIMAL_DETACH_HINT="exit or close the terminal"; eval "$MINIMAL_MOTD" 2>/dev/null; unset MINIMAL_MOTD MINIMAL_DETACH_HINT; fi ;; esac'
+    B=$T/lb; mkdir -p "$B" "$T/box"
+    for f in "$B/.bashrc" "$B/.zshrc" "$T/box/.bashrc" "$T/box/.zshrc"; do
+        printf '%s\n' '# min:motd (managed by min-cursor)' "$old" > "$f"
+    done
+    HOME=$B sh -c "$(loadout_hook 0)" < /dev/null
+    run_prep "$T/p1" || fail "PREP failed: $(cat "$T/p1.err")"
+    for f in "$B/.bashrc" "$B/.zshrc" "$T/box/.bashrc" "$T/box/.zshrc"; do
+        [ "$(grep -c 'min:motd' "$f")" = 1 ] || fail "$f: $(cat "$f")"
+        ! grep -qF -- "$old" "$f" || fail "$f kept the old line: $(cat "$f")"
+        grep -qF -- '2>/dev/null || :; unset' "$f" || fail "$f: $(cat "$f")"
+    done
+}
+
+# A ~/.bash_profile that does not source ~/.bashrc (sshd's bash login shell
+# reads only that) gets one marked line from either writer, once, on a line
+# of its own when the profile's last line has no newline; one that mentions
+# ~/.bashrc is left alone.
+# shellcheck disable=SC2016  # the rc line, literal
+case_bash_profile_sources_bashrc() {
+    for w in loadout prep; do
+        rm -rf "$T/box"; mkdir -p "$T/box"
+        printf 'export FOO=1' > "$T/box/.bash_profile"
+        for _ in 1 2; do
+            if [ $w = loadout ]; then HOME=$T/box sh -c "$(loadout_hook 0)" < /dev/null
+            else run_prep "$T/p1" || fail "PREP failed: $(cat "$T/p1.err")"; fi
+        done
+        [ "$(grep -cF '. "$HOME/.bashrc"' "$T/box/.bash_profile")" = 1 ] || fail "$w .bash_profile: $(cat "$T/box/.bash_profile")"
+        [ "$(head -1 "$T/box/.bash_profile")" = "export FOO=1" ] || fail "$w .bash_profile: $(cat "$T/box/.bash_profile")"
+        assert_file_contains "$T/box/.bash_profile" "# min:bashrc (managed by"
+        printf 'source ~/.bashrc\n' > "$T/box/.bash_profile"
+        if [ $w = loadout ]; then HOME=$T/box sh -c "$(loadout_hook 0)" < /dev/null
+        else run_prep "$T/p1" || fail "PREP failed: $(cat "$T/p1.err")"; fi
+        assert_file "$T/box/.bash_profile" "source ~/.bashrc"
     done
 }
 
@@ -1902,7 +1961,7 @@ config_print_and_bad_option config_and_doctor_keep_entries_when_min_ls_fails mer
 merger_symlink_written_through merger_preserves_foreign_entries_cursor_put_in_block
 merger_refuses_foreign_keys_in_block merger_bad_jsonc_left_alone doctor_rows doctor_min_version
 new_empty_no_window attach_no_window destroy_if_idle destroy_unsaved_needs_force status_json setup_installs_follows_and_removes setup_remove_stops_when_config_refuses setup_through_link setup_shares_skills_with_other_tools
-loadout_rc_line_once loadout_env_keeps_motd prep_and_loadout_rc_lines_agree motd_rc_line_quiet_without_tty motd_rc_line_on_tty motd_rc_line_skips_attach_shell motd_rc_line_replaces_older
+loadout_rc_line_once loadout_env_keeps_motd prep_and_loadout_rc_lines_agree motd_rc_line_quiet_without_tty motd_rc_line_on_tty motd_rc_line_survives_errexit motd_rc_line_skips_attach_shell motd_rc_line_replaces_older motd_rc_line_upgrades_unguarded bash_profile_sources_bashrc
 sshconfig_install_creates_include_and_stanza sshconfig_remove_restores_original
 sshconfig_coexists_with_another_tool sshconfig_keeps_symlinked_config sshconfig_print_touches_nothing
 sshconfig_destroy_drops_stanza sshconfig_stale_and_invalid_dirs_skipped sshconfig_real_ssh_resolves
