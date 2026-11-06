@@ -1764,6 +1764,57 @@ case_open_keeps_default_loadouts() {
     assert_log_contains "min session activate --no-prompt --loadout dots --loadout broker --loadout cursor $P"
 }
 
+# Minimal's built-in loadout goes first, once, when min lists a `built-in` row.
+case_open_adds_builtin_loadout() {
+    installed
+    mkdir -p "$HOME/.config/minimal"
+    printf '  NAME      DESCRIPTION  CONTRIBUTES\n  built-in  Minimal      0 pkg / 3 var / 0 patch\n* dots      mine         1 pkg / 0 var / 0 patch\n  cursor    sshd         5 pkg / 0 var / 1 patch\n' \
+        > "$FIXTURES/loadouts.txt"
+    printf '[loadouts]\ndefault_loadouts = ["dots"]\n' > "$HOME/.config/minimal/config.toml"
+    sessions_after proj-amber "$P"
+    run open "$P"
+    assert_rc 0
+    assert_log_contains "min session activate --no-prompt --loadout built-in --loadout dots --loadout cursor $P"
+    # the row with a marker after the name, or the `*` of a default loadout
+    for row in '  built-in (shipped)  Minimal' '* built-in  Minimal'; do
+        printf '  NAME  DESCRIPTION\n%s\n' "$row" > "$FIXTURES/loadouts.txt"
+        printf '{"sessions":[]}\n' > "$FIXTURES/sessions.json"; reset_log
+        run new "$P"
+        assert_rc 0
+        assert_log_contains "min session activate --no-prompt --loadout built-in --loadout dots --loadout cursor $P"
+    done
+    # the user names it: their place in the list, and only once
+    printf '[loadouts]\ndefault_loadouts = ["dots", "built-in"]\n' > "$HOME/.config/minimal/config.toml"
+    printf '{"sessions":[]}\n' > "$FIXTURES/sessions.json"; reset_log
+    run open "$P"
+    assert_rc 0
+    assert_log_contains "min session activate --no-prompt --loadout dots --loadout built-in --loadout cursor $P"
+    assert_log_count 1 "--loadout built-in"
+}
+
+# Not added when min has no selectable built-in: today's `default (built-in)`
+# row, a name that only starts with built-in, or a failed `min loadout list`.
+case_open_builtin_loadout_absent() {
+    installed
+    sessions_after proj-amber "$P"
+    for rows in '  default (built-in)  Minimal  0 pkg / 3 var / 0 patch' '  built-in-extra  x' '  mine  the built-in look'; do
+        printf '  NAME  DESCRIPTION  CONTRIBUTES\n%s\n  cursor  sshd  5 pkg\n' "$rows" > "$FIXTURES/loadouts.txt"
+        printf '{"sessions":[]}\n' > "$FIXTURES/sessions.json"; reset_log
+        run open "$P"
+        assert_rc 0
+        assert_log_contains "min session activate --no-prompt --loadout cursor $P"
+        assert_log_not_contains "--loadout built-in"
+    done
+    printf '  built-in  Minimal\n' > "$FIXTURES/loadouts.txt"
+    : > "$FIXTURES/loadouts.fail"
+    printf '{"sessions":[]}\n' > "$FIXTURES/sessions.json"; reset_log
+    run open "$P"
+    assert_rc 0
+    assert_log_contains "min loadout list"
+    assert_log_contains "min session activate --no-prompt --loadout cursor $P"
+    assert_log_not_contains "--loadout built-in"
+}
+
 # default_loadouts in the other TOML spellings.
 case_open_default_loadouts_toml_forms() {
     installed
@@ -1920,6 +1971,7 @@ prep_regenerates_half_pair prep_keygen_failure_releases_lock prep_stale_lock_str
 open_default_loadouts_toml_forms sshconfig_lock_held_waits_then_fails
 sshconfig_two_tools_install_at_once gc_rechecks_before_each_question bad_session_name_refused
 completions_parse sessions_lists_names usage sshconfig_two_tools_coexist open_keeps_default_loadouts safety_gui_commands_absolute
+open_adds_builtin_loadout open_builtin_loadout_absent
 "
 
 # Nothing under ~/.ssh unless the case opted in to ssh-config.

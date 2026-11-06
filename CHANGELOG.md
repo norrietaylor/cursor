@@ -11,6 +11,12 @@ All notable changes to this project are documented here. The format follows
   interactive `min-cursor ssh` session print it once, with
   "exit or close the terminal" as the detach hint. `min session attach`
   shells are unchanged.
+- New boxes get Minimal's `built-in` loadout (the mark, the banner and the
+  `minimal:` prompt) first, before your `default_loadouts` and `cursor`, once
+  the installed min ships it (gominimal/inbox#1182); `min loadout list` must
+  show a row named `built-in`. Naming it in `default_loadouts` keeps your
+  order, and it is never passed twice. With an older min, or when the list
+  fails, activation is unchanged.
 
 ### Fixed
 
