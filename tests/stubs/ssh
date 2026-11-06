@@ -3,4 +3,6 @@
 # goes to the real ssh so doctor and the tests can parse ~/.ssh/config.
 case ${1:-} in -G) exec /usr/bin/ssh "$@" ;; esac
 echo "ssh $*" >> "$STUB_LOG"
+for a; do :; done
+printf '%s' "${a:-}" > "$STUB_LOG.last-arg"   # the remote command, whole
 exit 0

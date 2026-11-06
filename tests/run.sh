@@ -1308,6 +1308,134 @@ case_forwarding_off_on_ssh_path() {
     assert_log_contains " ${HP}alpha true"
 }
 
+# ---- worker --------------------------------------------------------------------
+
+# box_env: fakes for what the worker script calls in the box. The agent logs
+# its argv, says what $FIXTURES/agent.status holds, and logs in by emptying it.
+box_env() {
+    BOX=$T/box BOXLOG=$T/box.log
+    mkdir -p "$BOX/bin" "$BOX/home" "$T/wb"
+    : > "$BOXLOG"
+    # A private PATH: an agent installed on this host must not stand in for the fake.
+    for u in bash cat cp grep mkdir sh; do ln -s "$(command -v "$u")" "$BOX/bin/$u"; done
+    cat > "$T/agent" <<AGENT
+#!/bin/sh
+echo "agent \$* NO_OPEN_BROWSER=\${NO_OPEN_BROWSER:-}" >> "$BOXLOG"
+case \${1:-} in
+    status) cat "$FIXTURES/agent.status" ;;
+    login) [ ! -f "$FIXTURES/login.fails" ] || exit 1 ;;
+esac
+exit 0
+AGENT
+    chmod +x "$T/agent"
+    cat > "$BOX/bin/curl" <<CURL
+#!/bin/sh
+echo "curl \$*" >> "$BOXLOG"
+[ -f "$FIXTURES/install.fails" ] || printf 'mkdir -p "\$HOME/.local/bin"; cp "$T/agent" "\$HOME/.local/bin/agent"\n'
+CURL
+    cat > "$BOX/bin/git" <<GIT
+#!/bin/sh
+echo "git \$*" >> "$BOXLOG"
+[ -f "$FIXTURES/has.origin" ]
+GIT
+    chmod +x "$BOX/bin/curl" "$BOX/bin/git"
+    echo "Logged in as someone" > "$FIXTURES/agent.status"
+    : > "$FIXTURES/has.origin"
+}
+# box_run: the script the last ssh carried, run as the box would, in $T/wb.
+box_run() {
+    sed "s|^cd /workbench |cd $T/wb |" "$STUB_LOG.last-arg" > "$T/script"
+    HOME=$BOX/home PATH=$BOX/bin sh "$T/script" > "$T/box.out" 2> "$T/box.err" < /dev/null
+    RC=$?
+}
+assert_boxlog() { assert_file_contains "$BOXLOG" "$1"; }
+assert_boxlog_not() { assert_file_not_contains "$BOXLOG" "$1"; }
+agent_present() { mkdir -p "$BOX/home/.local/bin"; cp "$T/agent" "$BOX/home/.local/bin/agent"; }
+
+case_worker_runs_over_ssh_with_a_terminal() {
+    run worker alpha
+    assert_rc 0
+    assert_log_contains "min session exec alpha sh -c <script>"
+    assert_log_contains "-o ForwardAgent=no"
+    assert_log_contains " ${HP}alpha -tt "
+    assert_file_contains "$STUB_LOG.last-arg" "exec agent worker --name 'Minimal alpha' --worker-dir /workbench --idle-release-timeout 0 start"
+    assert_log_not_contains "session activate"
+}
+
+case_worker_needs_a_known_session() {
+    run worker nope
+    assert_rc 1
+    assert_err_contains "no session named nope"
+    assert_log_not_contains "ssh "
+    run worker --bogus alpha
+    assert_rc 1
+    assert_err_contains "worker: unknown option --bogus"
+    run worker
+    assert_rc 1
+    assert_err_contains "worker: NAME required"
+}
+
+case_worker_script_installs_then_logs_in() {
+    box_env
+    echo "Not logged in" > "$FIXTURES/agent.status"
+    run worker alpha
+    box_run
+    assert_rc 0
+    assert_boxlog "curl -fsS https://cursor.com/install"
+    assert_boxlog "agent login NO_OPEN_BROWSER=1"
+    assert_boxlog "agent worker --name Minimal alpha --worker-dir /workbench --idle-release-timeout 0 start"
+    assert_file_contains "$T/box.out" "The login stays in this box"
+    assert_file_contains "$T/box.out" "$TOOL worker --logout alpha"
+}
+
+case_worker_script_reuses_cli_and_login() {
+    box_env
+    agent_present
+    run worker alpha
+    box_run
+    assert_rc 0
+    assert_boxlog_not "curl"
+    assert_boxlog_not "agent login"
+    assert_boxlog "agent worker --name Minimal alpha"
+    [ ! -s "$T/box.err" ] || fail "unexpected warning: $(cat "$T/box.err")"
+}
+
+case_worker_script_stops_when_install_or_login_fails() {
+    box_env
+    : > "$FIXTURES/install.fails"
+    run worker alpha
+    box_run
+    assert_rc 1
+    assert_file_contains "$T/box.err" "Cursor's CLI did not install"
+    assert_boxlog_not "agent worker"
+    agent_present
+    echo "Not logged in" > "$FIXTURES/agent.status"
+    : > "$FIXTURES/login.fails"
+    box_run
+    assert_rc 1
+    assert_boxlog_not "agent worker"
+}
+
+case_worker_script_warns_without_origin() {
+    box_env
+    agent_present
+    rm "$FIXTURES/has.origin"
+    run worker alpha
+    box_run
+    assert_rc 0
+    assert_file_contains "$T/box.err" "/workbench has no git origin"
+    assert_boxlog "agent worker --name Minimal alpha"
+}
+
+case_worker_logout_runs_only_logout() {
+    run worker --logout alpha
+    assert_rc 0
+    assert_log_contains "agent logout"
+    assert_log_not_contains "-tt"
+    assert_log_not_contains "agent worker"
+    assert_log_count 1 "ssh -i"
+}
+
 case_sshconfig_paths_with_spaces_and_percent() {
     [ -x /usr/bin/ssh ] || { skip "no /usr/bin/ssh"; return 0; }
     STATE="$T/st ate %x" MIN_CURSOR_STATE_DIR="$T/st ate %x"; export MIN_CURSOR_STATE_DIR
@@ -1892,6 +2020,8 @@ CASES="
 gc_no_own_sessions_yet open_activates_and_launches_editor open_reuses_live_session_for_path open_skips_foreign_session_for_path
 open_needs_ssh_config
 open_rejects_non_directory_and_bad_name open_name_for_other_dir new_always_activates
+worker_runs_over_ssh_with_a_terminal worker_needs_a_known_session worker_script_installs_then_logs_in
+worker_script_reuses_cli_and_login worker_script_stops_when_install_or_login_fails worker_script_warns_without_origin worker_logout_runs_only_logout
 attach_launches_existing attach_picker_rejects_zero attach_picker_uses_shown_list open_without_editor_fails_after_prepare open_editor_falls_back_to_app
 names_from_min
 destroy_asks_and_cleans_up destroy_ls_fails_keeps_keys destroy_ls_fails_once_keeps_stanza destroy_by_cwd destroy_by_cwd_only_own in_use_reads_ps gc_lists_oldest_first_and_asks

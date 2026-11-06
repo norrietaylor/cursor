@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `min-cursor worker [--logout] [NAME]` and **Minimal: Run Cursor Worker in
+  Box…** run a Cursor worker in a box, so it shows under **Run on > Remote
+  Machine > My Machines** while the worker runs. Opt in: your Cursor login is
+  stored in that box.
 - Minimal's banner now shows in ssh shells: each new Cursor terminal and an
   interactive `min-cursor ssh` session print it once, with
   "exit or close the terminal" as the detach hint. `min session attach`

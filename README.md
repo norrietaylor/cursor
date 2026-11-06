@@ -30,7 +30,8 @@ port forwarding and Cursor's agent all run in the box.
 - **Nothing listens on a port.** An OpenSSH `sshd` runs inside the box on
   demand, behind a `ProxyCommand` that rides Minimal's own exec channel.
 - **Only a public key enters the box.** Each box gets its own key; the box's
-  host key is pinned; agent and X11 forwarding are off.
+  host key is pinned; agent and X11 forwarding are off. The one exception is
+  opt-in: `min-cursor worker` keeps your Cursor login in that box.
 - **Nothing is destroyed without your click.** Destroy and clean-up always
   ask, and ask again before discarding changes Minimal has not saved.
 

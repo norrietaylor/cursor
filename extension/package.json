@@ -61,6 +61,7 @@
       { "command": "minimal.destroy", "title": "Destroy Box…", "category": "Minimal", "icon": "$(trash)" },
       { "command": "minimal.cleanUp", "title": "Clean Up Idle Boxes…", "category": "Minimal", "icon": "$(clear-all)" },
       { "command": "minimal.refresh", "title": "Refresh", "category": "Minimal", "icon": "$(refresh)" },
+      { "command": "minimal.runWorker", "title": "Run Cursor Worker in Box…", "category": "Minimal", "icon": "$(server-process)" },
       { "command": "minimal.doctor", "title": "Run Doctor", "category": "Minimal" }
     ],
     "menus": {
@@ -76,6 +77,7 @@
         { "command": "minimal.openNewWindow", "when": "view == minimal.boxes && viewItem == box", "group": "inline" },
         { "command": "minimal.open", "when": "view == minimal.boxes && viewItem == box", "group": "1_open@1" },
         { "command": "minimal.openNewWindow", "when": "view == minimal.boxes && viewItem == box", "group": "1_open@2" },
+        { "command": "minimal.runWorker", "when": "view == minimal.boxes && viewItem == box", "group": "2_worker" },
         { "command": "minimal.destroy", "when": "view == minimal.boxes && viewItem == box", "group": "9_destroy" }
       ],
       "explorer/context": [
@@ -86,6 +88,7 @@
         { "command": "minimal.newEmpty", "when": "minimal.setUp" },
         { "command": "minimal.open", "when": "minimal.setUp" },
         { "command": "minimal.openNewWindow", "when": "minimal.setUp" },
+        { "command": "minimal.runWorker", "when": "minimal.setUp" },
         { "command": "minimal.destroy", "when": "minimal.setUp" },
         { "command": "minimal.cleanUp", "when": "minimal.setUp" },
         { "command": "minimal.removeSetup", "when": "minimal.setUp" },

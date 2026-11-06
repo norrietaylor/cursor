@@ -15,6 +15,7 @@ box, where `min-cursor` is not installed.
 | `min-cursor setup [--remove]` | the whole install from this copy: links `~/.local/bin/min-cursor` and the `cursor` loadout here, then `ssh-config` and `config`; `--remove` undoes only ours |
 | `min-cursor config [--remove\|--print]` | opt in to (or out of) the settings block; `--print` only prints |
 | `min-cursor ssh NAME [-- ARGS]` | plain `ssh` over the same transport (debugging: `-- -v`) |
+| `min-cursor worker [--logout] [NAME]` | opt in: run a Cursor worker in the box, in the foreground, so it shows under **Run on > Remote Machine > My Machines** while the command runs (no NAME: pick one of its own). The first run installs Cursor's CLI in the box and asks you to log in; the login stays there. `--logout` removes it. See [Cursor](cursor.md#a-box-as-a-my-machines-worker) |
 | `min-cursor ssh-config [--remove\|--print]` | opt in: one `Host min-cursor.NAME` stanza per session in `~/.ssh/min-cursor.conf`, included from the top of `~/.ssh/config` |
 | `min-cursor completions <zsh\|bash>` | print a completion script (`eval "$(min-cursor completions zsh)"`) |
 

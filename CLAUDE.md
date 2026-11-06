@@ -71,6 +71,11 @@ which also work alone from a terminal.
   client's connection). Never contact a box without such a live process: a
   connect starts a stopped box.
 - `gc` re-checks `gc_still_idle` before each question.
+- `worker` is the one path that puts a credential in a box, and only when run
+  explicitly: nothing starts it from `open`, `setup` or a hook. The login is
+  typed in the box, never read or stored on the host. It stays in the
+  foreground over `ssh -tt`, never detached, so it counts as in use and ends
+  with its terminal.
 - `config`/doctor never prune on a failed `min ls`. `--remove` restores the
   bytes it found (brace framing, CRLF, BOM); a user's own remotePlatform
   object that we rewrote is re-indented.
@@ -146,6 +151,11 @@ which also work alone from a terminal.
   `XDG_CONFIG_HOME=<scratch>` and a stub `MIN_BIN`.
 
 ## Unverified (needs a live session)
+
+- `min-cursor worker` and the extension's terminal for it: covered by stubs
+  only. The hand-run worker it wraps was tested, but over `min session exec`,
+  not `ssh -tt`. Unseen: `agent login` over ssh, closing the terminal ending
+  the worker in the box, `/workbench` from a real folder keeping `.git`.
 
 - **New Empty Box** (`min session activate --sync none` on an empty dir).
 - The unsaved-changes modal's detail and the `--force` destroy after it.

@@ -809,6 +809,10 @@ usage: $TOOL <command> [args]
   config [--remove|--print]
                           opt in: remote.SSH settings for ${HOST_PREFIX}* hosts in $EDITOR_NAME's settings.json
   ssh NAME [-- ARGS...]   plain ssh into the session with the same transport (debugging: -- -v)
+  worker [--logout] [NAME]
+                          opt in: run a Cursor worker in the session, in the foreground, so it
+                          shows under Run on > My Machines; the Cursor login stays in the box
+                          (--logout removes it)
   ssh-config [--remove|--print]
                           opt in: Host ${HOST_PREFIX}NAME stanzas in ~/.ssh/$TOOL.conf ($EDITOR_NAME needs them)
   completions <zsh|bash>  print a completion script
@@ -1073,6 +1077,50 @@ cmd_attach() {
     printf '%s%s\n' "$HOST_PREFIX" "$name"
 }
 
+# worker_script NAME: what runs in the box. Installs Cursor's CLI and asks for
+# a login only when they are missing; the login never passes through the host.
+worker_script() {
+    cat <<SCRIPT
+export PATH="\$HOME/.local/bin:\$PATH"
+cd $(shq "$WORKDIR") || exit 1
+if ! command -v agent >/dev/null 2>&1; then
+    echo "Installing Cursor's CLI from https://cursor.com/install"
+    curl -fsS https://cursor.com/install | bash
+    command -v agent >/dev/null 2>&1 || { echo "$TOOL: Cursor's CLI did not install" >&2; exit 1; }
+fi
+if agent status 2>&1 | grep -q 'Not logged in'; then
+    echo "Log in to Cursor. The login stays in this box, and anything running here can use it."
+    echo "To remove it: $TOOL worker --logout $1"
+    NO_OPEN_BROWSER=1 agent login || exit 1
+fi
+git remote get-url origin >/dev/null 2>&1 || echo "$TOOL: warning: $WORKDIR has no git origin; Cursor may not let you select this box" >&2
+exec agent worker --name $(shq "Minimal $1") --worker-dir $(shq "$WORKDIR") --idle-release-timeout 0 start
+SCRIPT
+}
+
+# worker [--logout] [NAME]: a Cursor worker in the box, for Run on > My
+# Machines. In the foreground over ssh, not detached: the connection gives
+# `agent login` a terminal, counts as in use, and ends the worker when it
+# closes, so no credentialed process outlives what the user can see. -tt: a
+# client may run this with stdin on a pipe.
+cmd_worker() {
+    name='' logout=''
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --logout) logout=1; shift ;;
+            -*) die "worker: unknown option $1" ;;
+            *) name=$1; shift ;;
+        esac
+    done
+    [ -n "$name" ] || name=$(pick_session worker)
+    if [ -n "$logout" ]; then
+        # shellcheck disable=SC2016  # expanded in the box
+        cmd_ssh "$name" -- 'PATH="$HOME/.local/bin:$PATH" agent logout'
+    else
+        cmd_ssh "$name" -- -tt "$(worker_script "$name")"
+    fi
+}
+
 # destroy [-y] [--if-idle] [--force] [NAME]. --if-idle is for a client that
 # asked its own question: it looks again right before destroying
 # (gc_still_idle) and refuses with exit 3 when something connected
@@ -1308,7 +1356,7 @@ cmd_completions() {
 #compdef @TOOL@
 _@FN@() {
     local -a cmds sess
-    cmds=(open new attach destroy gc status doctor config setup ssh ssh-config completions)
+    cmds=(open new attach destroy gc status doctor config setup ssh ssh-config worker completions)
     if (( CURRENT == 2 )); then
         compadd -a cmds
         return
@@ -1317,6 +1365,7 @@ _@FN@() {
         open) _arguments '-n[session name]:name:' '--no-window[do not open a window]' '1:path:_directories' ;;
         new) _arguments '-n[session name]:name:' '--no-window[do not open a window]' '--empty[an empty box]' '1:path:_directories' ;;
         attach) sess=(${(f)"$(@TOOL@ _sessions 2>/dev/null)"}); compadd -- --no-window; compadd -a sess ;;
+        worker) sess=(${(f)"$(@TOOL@ _sessions 2>/dev/null)"}); compadd -- --logout; compadd -a sess ;;
         destroy)
             sess=(${(f)"$(@TOOL@ _sessions 2>/dev/null)"})
             compadd -- -y --if-idle --force
@@ -1344,7 +1393,7 @@ _@FN@() {
     local IFS=$'\n'
     COMPREPLY=()
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=($(compgen -W "open new attach destroy gc status doctor config setup ssh ssh-config completions" -- "$cur"))
+        COMPREPLY=($(compgen -W "open new attach destroy gc status doctor config setup ssh ssh-config worker completions" -- "$cur"))
         return
     fi
     case $sub in
@@ -1353,6 +1402,7 @@ _@FN@() {
             w=$'-n\n--no-window'; [ "$sub" = new ] && w+=$'\n--empty'
             COMPREPLY=($(compgen -d -- "$cur") $(compgen -W "$w" -- "$cur")) ;;
         attach) COMPREPLY=($(compgen -W $'--no-window\n'"$(@TOOL@ _sessions 2>/dev/null)" -- "$cur")) ;;
+        worker) COMPREPLY=($(compgen -W $'--logout\n'"$(@TOOL@ _sessions 2>/dev/null)" -- "$cur")) ;;
         destroy) COMPREPLY=($(compgen -W $'-y\n--if-idle\n--force\n'"$(@TOOL@ _sessions 2>/dev/null)" -- "$cur")) ;;
         status) COMPREPLY=($(compgen -W "--json" -- "$cur")) ;;
         setup) COMPREPLY=($(compgen -W "--remove" -- "$cur")) ;;
@@ -1399,6 +1449,7 @@ case $cmd in
     destroy) cmd_destroy "$@" ;;
     gc) cmd_gc "$@" ;;
     ssh) cmd_ssh "$@" ;;
+    worker) cmd_worker "$@" ;;
     status) cmd_status "$@" ;;
     _sessions) own_ls | jq -r '.sessions[].name' ;;
     _proxy) cmd_proxy "$@" ;;

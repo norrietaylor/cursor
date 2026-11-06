@@ -3,7 +3,7 @@
 // (pinned keys, opt-in gates, explicit destroy). The extension runs on the
 // host (extensionKind "ui"), also in remote windows, because min is a host tool.
 import * as vscode from 'vscode';
-import { spawn } from 'child_process';
+import { ChildProcess, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -41,14 +41,18 @@ function cli(): string {
   return bundled;
 }
 
-function run(args: string[]): Promise<Result> {
+function cliEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   // Cursor's own CLI, so doctor can check Remote-SSH without the shell command.
   const editor = path.join(vscode.env.appRoot, 'bin', 'cursor');
   if (!env.MIN_CURSOR_EDITOR_BIN && fs.existsSync(editor)) env.MIN_CURSOR_EDITOR_BIN = editor;
+  return env;
+}
+
+function run(args: string[]): Promise<Result> {
   out.appendLine(`$ ${TOOL} ${args.join(' ')}`);
   return new Promise((resolve) => {
-    const p = spawn('/bin/sh', [cli(), ...args], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn('/bin/sh', [cli(), ...args], { env: cliEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     p.stdout.on('data', (d) => { stdout += d; });
@@ -262,6 +266,44 @@ async function cleanUp(view: Boxes): Promise<void> {
   view.refresh();
 }
 
+// `min-cursor worker NAME` in a terminal of its own, whose lifetime is the
+// worker's: closing it ends the ssh connection. A Pseudoterminal, so the CLI
+// runs on the host with this extension, also in a remote window.
+function workerTerminal(name: string): void {
+  const write = new vscode.EventEmitter<string>();
+  const close = new vscode.EventEmitter<void>();
+  let p: ChildProcess | undefined;
+  const show = (d: unknown) => write.fire(String(d).replace(/(?<!\r)\n/g, '\r\n'));
+  const pty: vscode.Pseudoterminal = {
+    onDidWrite: write.event,
+    onDidClose: close.event,
+    open: () => {
+      p = spawn('/bin/sh', [cli(), 'worker', name], { env: cliEnv(), stdio: ['pipe', 'pipe', 'pipe'] });
+      p.stdin?.on('error', (e) => show(`${e}\n`)); // EPIPE: typing after the CLI exits
+      p.stdout?.on('data', show);
+      p.stderr?.on('data', show);
+      p.on('error', (e) => show(`${e}\n`));
+      p.on('close', (code) => show(`\nWorker stopped (exit ${code ?? 'signal'}). Close this terminal.\n`));
+    },
+    handleInput: (d) => { p?.stdin?.write(d); },
+    close: () => { p?.kill(); },
+  };
+  vscode.window.createTerminal({ name: `Cursor worker: ${name}`, pty }).show();
+}
+
+async function runWorker(item: Item | undefined): Promise<void> {
+  const sb = await choose(item);
+  if (!sb) return;
+  const ok = await vscode.window.showWarningMessage(`Run a Cursor worker in ${sb.name}?`, {
+    modal: true,
+    detail: 'The box shows under Run on > Remote Machine > My Machines while the terminal stays open.\n\n' +
+      "Your Cursor login is stored in the box, and anything running there can use it. It stays until you destroy the box or run " +
+      `${TOOL} worker --logout ${sb.name}.\n\n` +
+      "The agent loop runs in Cursor's cloud, so the file contents and command output it needs go to Cursor.",
+  }, 'Run Worker');
+  if (ok === 'Run Worker') workerTerminal(sb.name);
+}
+
 // The box this window is connected to, if any.
 function thisBox(): string | undefined {
   const auth = vscode.workspace.workspaceFolders?.[0]?.uri.authority ?? '';
@@ -319,6 +361,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     vscode.commands.registerCommand('minimal.openNewWindow', async (item?: Item) => {
       const sb = await choose(item); if (sb) await openBox(sb.name, true);
     }),
+    vscode.commands.registerCommand('minimal.runWorker', (item?: Item) => runWorker(item)),
     vscode.commands.registerCommand('minimal.destroy', (item?: Item) => destroy(item, view)),
     vscode.commands.registerCommand('minimal.cleanUp', () => cleanUp(view)),
     vscode.commands.registerCommand('minimal.refresh', () => view.refresh()),

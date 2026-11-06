@@ -27,6 +27,10 @@ rest (terminals, extensions, port forwarding, the agent all run in the box).
    and opens a window on it. **New Empty Box** starts one with an empty
    `/workbench`.
 
+**Minimal: Run Cursor Worker in Box…** adds the box to Cursor's **Run on >
+Remote Machine > My Machines** while its terminal stays open. It stores your
+Cursor login in that box.
+
 The box is a copy: edits inside it do not change the folder on your Mac.
 Get work out with git (commit and push from the box's terminal).
 
