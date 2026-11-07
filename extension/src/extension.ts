@@ -18,9 +18,11 @@ const EXIT_UNSAVED = 4; // destroy: min wants a confirmation for unsaved changes
 
 interface Box {
   name: string;
+  id: string; // min's session id; own boxes are reached by it
   status: string;
   project: string;
   own: boolean;
+  recorded: boolean; // its id is recorded: Destroy and Clean up reach only these
   empty: boolean; // made by new --empty
   in_use: boolean;
   idle: number | null;
@@ -104,7 +106,7 @@ async function listBoxes(): Promise<Box[]> {
   const r = await run(['status', '--json']);
   if (r.code !== 0) { out.appendLine(`status failed: ${why(r)}`); return []; }
   const all = JSON.parse(r.stdout) as Box[];
-  const live = new Set(all.map((s) => s.name));
+  const live = new Set(all.filter((s) => s.own).map((s) => s.name)); // a gone box's name another box took is pruned
   void forgetRecent((n) => !live.has(n)); // only from a successful listing
   return all.filter((s) => s.own); // D5
 }
@@ -117,7 +119,8 @@ class Item extends vscode.TreeItem {
       : sb.in_use ? 'in use'
       : sb.idle !== null ? `idle ${age(sb.idle)}` : 'idle';
     this.description = state;
-    this.tooltip = `${sb.name}\n${sb.empty ? 'empty box' : sb.project}\n${state}`;
+    this.tooltip = `${sb.name}\n${sb.empty ? 'empty box' : sb.project}\n${state}` +
+      (sb.recorded ? '' : '\nNo box id recorded yet: open it once to record it.');
     this.iconPath = new vscode.ThemeIcon(sb.status !== 'active' ? 'vm-outline' : sb.in_use ? 'vm-active' : 'vm');
     this.command = { command: 'minimal.open', title: 'Open', arguments: [this] };
   }
@@ -149,7 +152,7 @@ async function choose(item: Item | undefined, filter: (s: Box) => boolean = () =
 async function openBox(name: string, newWindow?: boolean): Promise<void> {
   const r = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: `Connecting to ${name}…` },
-    () => run(['attach', name, '--no-window']));
+    () => run(['attach', '--own', name, '--no-window']));
   if (r.code !== 0) return failed(`Could not open ${name}`, r);
   const forceNewWindow = newWindow ?? (vscode.workspace.workspaceFolders !== undefined || vscode.env.remoteName !== undefined);
   const uri = vscode.Uri.parse(`vscode-remote://ssh-remote+${HOST_PREFIX}${name}${WORKDIR}`);
@@ -208,7 +211,7 @@ async function removeSetup(view: Boxes): Promise<void> {
 async function destroyRun(name: string, extra: string[] = []): Promise<Result> {
   const r = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: `Destroying ${name}…` },
-    () => run(['destroy', '-y', ...extra, name]));
+    () => run(['destroy', '-y', '--own', ...extra, name]));
   if (r.code !== EXIT_UNSAVED) return r;
   const said = r.stderr.split('\n').filter((l) => l.trim() && !l.startsWith(`[${TOOL}]`) && !l.includes('without confirmation'));
   const ok = await vscode.window.showWarningMessage(`${name} has changes Minimal has not saved.`, {
@@ -218,7 +221,7 @@ async function destroyRun(name: string, extra: string[] = []): Promise<Result> {
   if (ok !== 'Discard and Destroy') return { code: 0, stdout: '', stderr: '', kept: true };
   return vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: `Destroying ${name}…` },
-    () => run(['destroy', '-y', '--force', ...extra, name]));
+    () => run(['destroy', '-y', '--force', '--own', ...extra, name]));
 }
 
 // D6: a modal whose destructive button is clicked is the explicit y.
@@ -243,8 +246,12 @@ async function destroy(item: Item | undefined, view: Boxes): Promise<void> {
 // gc from the UI: one question per idle box, oldest first; the CLI
 // re-checks idleness right before each destroy (--if-idle).
 async function cleanUp(view: Boxes): Promise<void> {
-  const idle = (await listBoxes())
-    .filter((s) => s.status === 'active' && !s.in_use)
+  const boxes = await listBoxes();
+  for (const s of boxes.filter((b) => !b.recorded)) {
+    out.appendLine(`clean up skips ${s.name}: no box id recorded yet (open it once)`);
+  }
+  const idle = boxes
+    .filter((s) => s.recorded && s.status === 'active' && !s.in_use)
     .sort((a, b) => (b.idle ?? 0) - (a.idle ?? 0));
   if (idle.length === 0) { vscode.window.showInformationMessage('No idle Minimal boxes.'); return; }
   for (const sb of idle) {

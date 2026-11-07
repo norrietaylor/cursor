@@ -16,6 +16,23 @@ All notable changes to this project are documented here. The format follows
   3.27.22), and how to get a row under My Machines by running a Cursor worker
   in a box by hand (tested on 2026-11-06). This release adds no entry itself.
 
+### Changed
+
+- **Boxes are reached by id** (min 0.8,
+  [gominimal/minimal#2756](https://github.com/gominimal/minimal/pull/2756),
+  lets boxes share a name and resolves a name to the running box):
+  min-cursor records each box's id in `STATE/sessions/NAME/id` and passes it
+  to every `min session exec` and `min session destroy`. Another tool's box
+  is never reached under min-cursor's record or by a name min-cursor chose
+  (the Minimal view, the pickers, completions, the current-folder lookup); a
+  box you name explicitly becomes min-cursor's once it connects. `status
+  --json` now carries each `id` and `recorded`. A key dir from before takes
+  the id of the one box with its name when you connect to that box (`open`,
+  `attach`, `ssh`, an editor window), whoever made that box; when several
+  share it, min-cursor leaves them alone and `doctor` says so. `gc` and the
+  view's Destroy and Clean up never adopt: they destroy only a box whose
+  recorded id min lists.
+
 ### Fixed
 
 - `destroy` and `gc`: a failed `min ls` after the answer no longer counts as

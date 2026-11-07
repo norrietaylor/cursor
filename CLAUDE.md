@@ -12,7 +12,7 @@ which also work alone from a terminal.
 |---|---|
 | `bin/min-cursor` | tool constants, then the transport/ssh/session plumbing, then the client layer, whose first block holds every editor-specific constant |
 | plumbing | transport, PREP/prepare, `stored_path`, ssh options and stanzas, `ssh-config`, `_proxy`, `ssh`, naming, `activate_session`, `destroy_one`, `in_use_names`/`box_in_use`, `track_orphans`, `default_loadouts`, the ssh-config record, report helpers; editor-neutral, reaching the client layer only through its hooks |
-| client layer | `open`/`new`/`attach` (session, stanza, settings, `cursor --remote` unless `--no-window`; `new --empty`), `destroy` (`--if-idle`), `gc`, `status` (`--json`), `doctor`, `completions`, `config`, `setup`, hidden `_sessions`; hooks `client_on_connect` and `client_on_destroy` (settings sync) |
+| client layer | `open`/`new`/`attach` (session, stanza, settings, `cursor --remote` unless `--no-window`; `new --empty`; `attach`'s hidden `--own`), `destroy` (`--if-idle`; hidden `--own`), `gc`, `status` (`--json`), `doctor`, `completions`, `config`, `setup`, hidden `_sessions`; hooks `client_on_connect` and `client_on_destroy` (settings sync) |
 | `bin/min-cursor-config` | python3: marked-block merge of per-host `remote.SSH.remotePlatform` (the only key; Cursor has no `useLocalServer`) into Cursor's user settings.json; `--install`, `--sync NAME...`, `--remove`, `--doctor`, `--dry-run` |
 | `loadouts/cursor.toml`, `loadouts/cursor/` | `openssh curl rsync xxhash git`; sshd env prep; `min:workbench` and `min:motd` rc lines; a patch copying `cursor/skills/minimal-sandbox` to `~/.cursor/skills` in the box. `setup` copies `cursor/` beside the linked toml: `$LOADOUT_ROOT` must be a real directory |
 | `skills/`, `loadouts/cursor/skills/` | Minimal's skills, vendored from gominimal/minimal-skills (MIT) at a pinned commit by `just skills`: the host ones (`setup` copies them into the Mac's `~/.cursor/skills`, marked `.min-cursor-copy`, never over a dir with no `.min-*-copy` mark; one another min tool marked is shared, keeping its mark, and `--remove` deletes it only once no other mark is left) and `minimal-sandbox` (box only: the host ones teach commands a box lacks) |
@@ -31,13 +31,15 @@ which also work alone from a terminal.
 - Host alias is `min-cursor.NAME` (`HOST_PREFIX`); nothing hard-codes the
   prefix length (the long-prefix test run guards it).
 - `prepare` re-pins the host key and re-pushes the public key on every
-  `open`/`attach`/`ssh`/`_proxy`, so a recreated session self-heals.
+  `open`/`attach`/`ssh`/`_proxy`, so a box min-cursor recreated self-heals;
+  it never replaces a recorded id with another.
   `_proxy` always runs `prepare` and writes nothing to stdout before `exec`
   (stdout is the SSH byte stream). `_proxy` and `prepare` never call client
   hooks, never touch settings.json.
 - `ssh-config` is an opt-in gate: nothing under `~/.ssh` is touched until it
   has run. `ssh-config --remove` leaves `~/.ssh/config` byte-identical to
-  before install; `--print` writes nothing. Other tools' Include lines are
+  before install; `--print` writes nothing (`PICK_NOADOPT`: not even a
+  legacy key dir's adopted id). Other tools' Include lines are
   never touched.
 - `config` is the same kind of gate for settings.json: `--sync` is a no-op
   until `config` has run (`STATE/settings-installed`). The merger keeps the
@@ -52,24 +54,72 @@ which also work alone from a terminal.
 - Facts the box reports (user, hostkey, home, sshd) are untrusted: `prepare`
   validates them before writing anything, and dies if a write fails; stored
   `home`/`sshd` are re-checked on read (`stored_path`) by `_proxy` and by the
-  ProxyCommand `ssh` builds.
+  ProxyCommand `ssh` builds; the stored `id` likewise (`stored_id`).
 - `gc` and `destroy` never destroy without an explicit y; `-y` is the only
   way past `destroy`'s question.
 - A box is gone (keys, records and stanza dropped, `client_on_destroy` run
-  by `destroy_one`) only when a successful `min ls` no longer lists it; a
+  by `destroy_one`) only when a successful `min ls` no longer lists its id; a
   failed `min ls` keeps everything (ssh-config not rewritten), warns, and
   after a y exits non-zero; `destroy NAME` drops what was kept once a
-  successful `min ls` no longer lists NAME.
-- `gc` offers only own sessions (`own_ls`: a key dir `STATE/sessions/NAME`),
+  successful `min ls` no longer lists the recorded id (a key dir with no
+  id: once no box is named NAME). `min_ls` fails, as min failing does, when
+  min exits 0 with no session list (`.sessions` not an array), and
+  `own_filter` fails on such input: never an empty list in its place.
+- Every min call aimed at one box passes its id, never its name (min 0.8
+  resolves a name to whichever box holds it): `session exec` (prepare,
+  `_proxy`'s exec, `proxy_command`) and `session destroy` (`destroy_one`). The
+  id is `STATE/sessions/NAME/id` (`activate_session`: the one id new in `min
+  ls`, named NAME with `-n`, else for PATH; `prepare` writes it with the
+  facts), checked against `ID_ERE` on every read (`stored_id`) before it
+  reaches a command line or a stanza. `pick_id`/`box_id` resolve NAME: own
+  (the recorded id, listed under NAME); a key dir with no `id` adopts the one
+  box named NAME, only when a command connects to that box (`box_id`;
+  `own_filter`, which every list and the stanza and settings refreshes go
+  through, never writes; nor does anything under `PICK_NOADOPT=1`, which every
+  command but `open`, `attach`, `ssh` and `_proxy` sets: `destroy` (it
+  destroys by the id `pick_id` prints, and writes none), `ssh-config`,
+  `config`, `setup` (the extension runs it on startup), `gc`, `status`,
+  `_sessions` and `doctor`; they count it own without writing); several boxes
+  named NAME, none recorded, or a bad `id` file: no id (`box_id` status 2,
+  `BWHY`; also a listed box with a null or non-UUID id, `pick_id` 7, which is
+  never "none", so `destroy` keeps our keys), so an explicit NAME dies saying
+  why, `doctor` warns, it is not own and gets no stanza or settings entry;
+  never a by-name call. A recorded id is never traded for a box found by name:
+  ours gone (id unlisted; `pick_id` 5) with another box named NAME is `box_id`
+  status 5, "your box NAME is gone": `destroy NAME` drops only our keys and
+  records, everything else refuses; ours listed under another name (`pick_id`
+  6) is refused everywhere. A NAME chosen from the own list (the cwd, the
+  picker) resolves with `own`, and so does one the extension sends: its
+  `destroy` and `attach` calls pass the hidden `--own`: NAME must still be own
+  ("NAME is not a box of min-cursor's"), and `destroy --own` also refuses a
+  key dir with no `id` ("NAME has no recorded box id yet"), and so does
+  `destroy` with no NAME (the cwd lookup), so the view's Destroy and Clean up
+  and the cwd lookup never reach a box found only by its name (`status --json`
+  gives `recorded`; Clean up offers only recorded rows). `open` never adopts
+  in its lookup: prepare records the id once the project matches. `gc` never
+  adopts: a key dir with no `id` is listed ("no id recorded (attach NAME
+  once)"), never asked about; `gc` destroys only a box whose recorded id `min
+  ls` lists. A failed `min ls` keeps every stanza but a bad-id one. An
+  explicit NAME that is not own and has no recorded id reaches the one box of
+  that name (`attach`, `ssh`, `open -n`, `destroy`), refused when several
+  share it; `_proxy NAME` only an own box, or the one box of that name when
+  there is no key dir at all (a stanza of a box of ours that is gone never
+  reaches the box that took its name). Helpers reading one session
+  (`id_field`, `ls_lists`) select by id. Names stay the user-facing key: host
+  aliases, settings entries, the extension.
+- `gc` offers only own sessions (`own_ls`: a key dir `STATE/sessions/NAME`
+  whose recorded id `min ls` lists under NAME; `status --json` gives `id`),
   and `gc`/`status` date only those in `orphan/` (`track_orphans`, each run);
   boxes made by `min` alone are never listed. The same holds wherever a
   session is chosen for the user: `open`'s reuse of a live session for PATH,
   `destroy`'s cwd lookup, the `attach` picker and `_sessions` (completions).
-  Only an explicit NAME (`attach NAME`, `destroy NAME`, `open -n NAME`) may
-  reach another tool's box.
-- In use = some host process runs `min session exec NAME ... sshd` (any ssh
-  client's connection). Never contact a box without such a live process: a
-  connect starts a stopped box.
+  Only an explicit NAME (`attach NAME`, `ssh NAME`, `destroy NAME`, `open -n
+  NAME`) may reach another tool's box.
+- In use = some host process runs `min session exec X ... sshd` (any ssh
+  client's connection), for an own box by its name or its id (gc rows,
+  `gc_still_idle`, `st_used`, `track_orphans`; `in_use_names` maps nothing); X
+  is an id or a bare name (connections from before ids, other tools). Never
+  contact a box without such a live process: a connect starts a stopped box.
 - `gc` re-checks `gc_still_idle` before each question.
 - `config`/doctor never prune on a failed `min ls`. `--remove` restores the
   bytes it found (brace framing, CRLF, BOM); a user's own remotePlatform
@@ -93,6 +143,17 @@ which also work alone from a terminal.
   only from a successful `status --json`.
 
 ## External facts that bite
+
+- min 0.8.0-dev.381
+  ([gominimal/minimal#2756](https://github.com/gominimal/minimal/pull/2756),
+  BOX-004/005): a session name is an alias many boxes may share. A stopped box
+  keeps its name, and `min ls` still lists it, but it doesn't stop a new box
+  from taking the name; only a running box (or a resume in flight) does
+  (minimald's `claim_name`/`running_name_holder`). A name resolves to the
+  running box, else the latest. `session exec`, `attach`, `destroy`, `rename`
+  and `policy` take a full session id first (`SessionLookup::parse`), and `min
+  ls --json` gives each session's `id` (lowercase hex UUID) and `name` (which
+  may be null).
 
 - `min` is a zsh function on the host; `MIN_BIN` is resolved to an absolute
   path and baked into each stanza (Cursor spawns ssh with the launchd PATH).
